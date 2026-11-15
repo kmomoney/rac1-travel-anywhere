@@ -1,0 +1,6 @@
+/build/
+/build-*/
+/dist/
+/.sdk/
+__pycache__/
+.DS_Store
