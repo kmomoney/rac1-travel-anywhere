@@ -1,0 +1,68 @@
+{
+  "format": 2,
+  "id": "rac1-travel-anywhere",
+  "name": "Travel anywhere",
+  "version": "0.1.0",
+  "author": "kmomoney",
+  "description": "Opens the ship's own planet select from anywhere you play: hold L1 and R1 and press Select. It lists the planets the ship would, and picking one flies there as the ship does (the save, the flight, the landing). Backing out puts you back where you were, as you were; picking the planet you are on lands the ship again, as at the ship. It does not open in cutscenes, menus, the ship's own flight, as Clank or Giant Clank, while riding, while Ratchet is down, or on a planet with no ship; a line at the top of the picture says why.",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/kmomoney/rac1-travel-anywhere",
+  "api": "1.2",
+  "multiplayer": "gameplay",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "load": {
+    "after": [
+      "keyboard-mouse",
+      "button-swap"
+    ]
+  },
+  "hooks": [
+    "rac1.ship.travel_to"
+  ],
+  "settings": [
+    {
+      "key": "combo",
+      "multiplayer": "own",
+      "name": "Buttons",
+      "type": "choice",
+      "default": "l1_r1_select",
+      "choices": [
+        {
+          "value": "l1_r1_select",
+          "name": "L1 + R1, then Select"
+        },
+        {
+          "value": "l2_r2_select",
+          "name": "L2 + R2, then Select"
+        },
+        {
+          "value": "off",
+          "name": "Off"
+        }
+      ],
+      "description": "Hold the two shoulder buttons and press Select to open the planet select. Select alone still opens the map; the shoulder buttons still look and crouch while you hold them."
+    },
+    {
+      "key": "key",
+      "multiplayer": "own",
+      "name": "Keyboard key",
+      "type": "keybind",
+      "binds": 1,
+      "default": "",
+      "description": "A key that opens it too. None by default; pick one the game's controls do not use."
+    },
+    {
+      "key": "trace",
+      "multiplayer": "own",
+      "name": "Trace",
+      "type": "bool",
+      "default": false,
+      "description": "For bug reports: a line in the game's log at each press of the buttons, saying what the mod decided and everything it read to decide it, and at each step of its menu."
+    }
+  ]
+}
