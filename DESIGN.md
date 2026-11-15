@@ -140,10 +140,23 @@ over `ShipTravelTo` for its custom ship destinations (`port/game/rac1-pal/host/d
 `func_L00_00290030`), and with no destination set it calls the game's code directly
 (`func_L00_00290030__game`) rather than through the hook point (`func_L00_00290030__hooked`). So
 on the PAL disc `rac1.ship.travel_to` never reaches a mod (this one, the multiplayer mod). The
-mod does not need it there: the back-out is the close request's change, and the menu's end is the
-level changing or play coming back; the PAL play-test runs end through those (PLAYTEST.md). The
 NTSC build calls the hook. The fix belongs to OpenRAC (calling `__hooked` in both places), not to
 this mod.
+
+It is safe for this mod, because nothing it must do happens in the hook:
+
+- **Backing out** is the close request turned from 2 to 1 while the menu closes, at a pad poll or
+  a tick's end; the game then never calls `ShipTravelTo` at all. Between the close (state 20,
+  timer 2) and the restore come a whole loop pass with its poll and its vertical blank, so the
+  change always lands first. The hook's own back-out is only a second line behind it, which PAL
+  lacks; every PAL back-out route took the first (PLAYTEST.md).
+- **A travel or the landing** is the game's own `ShipTravelTo` whether a hook sees it or not: the
+  mod only notes it there. On PAL the game runs it unobserved, exactly as at the ship.
+- **The menu's end** is also seen without the hook: the level changing (a travel) or play coming
+  back with no page waiting (a landing, a back-out). The PAL travel and landing routes end their
+  menus that way (`menu over: the level changed`, `menu over: play again`).
+
+What PAL loses is the trace line naming the travel, and the second line of the back-out.
 
 ## 3. Why these hook points and calls
 
