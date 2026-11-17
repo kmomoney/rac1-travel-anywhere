@@ -104,6 +104,8 @@ No conflicts are declared with any of these.
 
 ## Release notes
 
+- **0.1.2**: Plainer README, setting descriptions and on-screen messages. It plays the same as
+  0.1.1.
 - **0.1.1**: Choosing the planet you're on now restarts the level with a full trip there. It used
   to land the ship and leave you where you stood (Veldin still does).
 - **0.1.0**: First release, for the PAL v2.00 and NTSC-U v1.00 discs.

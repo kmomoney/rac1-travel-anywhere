@@ -2,7 +2,7 @@
   "format": 2,
   "id": "rac1-travel-anywhere",
   "name": "Travel anywhere",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "kmomoney",
   "description": "Open the ship's planet select from anywhere: hold L1 + R1 and press Select. Pick a planet and the ship flies you there as usual. Back out and you carry on right where you were. Pick the planet you're on to restart its level from the beginning, keeping your bolts and items. It won't open at a few unsafe moments, such as while riding, playing as Clank or respawning; a message says why.",
   "license": "GPL-3.0-or-later",
