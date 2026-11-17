@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# rac1-travel-anywhere (README.md): the ship's planet select from anywhere in Ratchet & Clank on
-# OpenRAC's native port. The top of the repository, from the SDK's template (sdk/template), with the
-# tests.
+# rac1-travel-anywhere (README.md): opens Ratchet & Clank's ship travel menu from anywhere, on
+# OpenRAC's native port. The top of the repository, made from the SDK's template (sdk/template)
+# with tests added.
 #
 #   python3 tools/fetch_sdk.py                     # the SDK sdk.lock pins, into .sdk/
 #   cmake -S . -B build -G Ninja
@@ -35,7 +35,7 @@ openrac_add_mod(rac1_travel_anywhere MANIFEST openrac-mod.json
                 SOURCES src/mod.cpp src/rac1/game.cpp)
 # The sources include version.h and rac1/... from src/.
 target_include_directories(rac1_travel_anywhere PRIVATE src)
-# Warnings on.
+# Turn on the compiler's warnings.
 if(MSVC)
   target_compile_options(rac1_travel_anywhere PRIVATE /W4)
 else()
@@ -44,17 +44,17 @@ endif()
 
 # The tests build only when testing is on (CTest's BUILD_TESTING).
 if(BUILD_TESTING)
-  # The decisions alone (src/rac1/travel.h): plain C, no game, no SDK.
+  # The decisions alone (src/rac1/travel.h): plain C, with no game and no SDK.
   add_executable(rac1_travel_anywhere_travel_test tests/travel_test.c)
   target_include_directories(rac1_travel_anywhere_travel_test PRIVATE src tests)
   set_target_properties(rac1_travel_anywhere_travel_test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
-  # Warnings on.
+  # Turn on the compiler's warnings, for compilers that take these flags.
   if(NOT MSVC)
     target_compile_options(rac1_travel_anywhere_travel_test PRIVATE -Wall -Wextra)
   endif()
   add_test(NAME rac1_travel_anywhere_travel COMMAND rac1_travel_anywhere_travel_test)
 
-  # The library as the port loads it, against a host table of the test's own, on both discs' rows.
+  # The library as the port loads it, against a host table of the test's own, for each disc's row.
   add_executable(rac1_travel_anywhere_load_test tests/load_test.c)
   target_include_directories(rac1_travel_anywhere_load_test PRIVATE src tests)
   set_target_properties(rac1_travel_anywhere_load_test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
@@ -62,7 +62,7 @@ if(BUILD_TESTING)
   add_dependencies(rac1_travel_anywhere_load_test rac1_travel_anywhere)
   add_test(NAME rac1_travel_anywhere_load COMMAND rac1_travel_anywhere_load_test $<TARGET_FILE:rac1_travel_anywhere>)
 
-  # The manifest against the code: run when Python is found.
+  # The manifest checked against the code, when Python is found.
   find_package(Python3 COMPONENTS Interpreter)
   if(Python3_FOUND)
     add_test(NAME rac1_travel_anywhere_manifest

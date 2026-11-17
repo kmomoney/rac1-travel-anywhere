@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
- * The built library loaded the way the port loads it (GUIDE.md section 12), against a host table of
- * the test's own, once for each row of src/rac1/discs.h: its query, its refusals, the hook point and
- * callbacks it takes, and what its pad and tick callbacks and its hook do to game memory laid out at
- * that row's addresses, the game's own PauseAllSounds and ShipTravelTo standing in as stubs.
+ * Loads the built library the way the port loads it (GUIDE.md section 12), against a host table of
+ * the test's own, once for each row of src/rac1/discs.h. It checks the query, the refusals, the
+ * hook point and callbacks the mod takes, and what its pad and tick callbacks and its hook do to
+ * game memory laid out at that row's addresses. Stubs stand in for PauseAllSounds and ShipTravelTo.
  *
  *     rac1_travel_anywhere_load_test <path to the library>
  */
@@ -31,7 +31,7 @@
 #include "rac1/travel.h"
 #include "version.h"
 
-/* ---- The game's memory and the host's state --------------------------------------------------- */
+/* ---- Game memory and host state ---- */
 
 #define MEMORY_SIZE 0x00400000u
 static uint8_t* g_mem;
@@ -47,10 +47,10 @@ static const char* s_combo = "l1_r1_select";
 static const char* s_key = "";
 static int s_trace;
 
-/* The row under test. */
-static const ta_disc* D;
+/* The disc row under test. */
+static const ta_disc* g_disc;
 
-/* Where the test puts the game's pointers. */
+/* Where the test places the objects that game pointers point at. */
 #define SHIP_MOBY 0x00300000u
 #define HERO_MOBY 0x00310000u
 #define PAGE_PLANETS 0x00320000u
@@ -70,44 +70,45 @@ static void putb(uint32_t a, uint8_t v) {
     g_mem[a] = v;
 }
 
-#define HERO(off) (D->hero + (off))
-#define MENU(off) (D->menu + (off))
+#define HERO(off) (g_disc->hero + (off))
+#define MENU(off) (g_disc->menu + (off))
 
-/* Ratchet standing in play on Kerwan (level 3), his ship parked, the card idle, the ship's list
- * holding Kerwan and Novalis. */
+/* Resets game memory to Ratchet standing in play on Kerwan (level 3), with his ship parked, the
+ * card idle and Kerwan and Novalis in the ship's list. */
 static void reset_game(void) {
     memset(g_mem, 0, MEMORY_SIZE);
     g_level = 3;
-    puti(D->current_level, 3);
-    puti(D->galaxy_list, 3);
-    puti(D->galaxy_list + 4, 1);
-    puti(D->mode, 0);
-    puti(D->mode_ticks, 500);
+    puti(g_disc->current_level, 3);
+    puti(g_disc->galaxy_list, 3);
+    puti(g_disc->galaxy_list + 4, 1);
+    puti(g_disc->mode, 0);
+    puti(g_disc->mode_ticks, 500);
     puti(HERO(TA_HERO_MOBY), (int32_t)HERO_MOBY);
     puti(HERO(TA_HERO_HP), 4);
-    puti(D->ship + TA_SHIP_MOBY, (int32_t)SHIP_MOBY);
-    puti(D->card + D->card_pending, -1);
-    puti(D->debug + TA_DEBUG_FLAGS, 0xF);
+    puti(g_disc->ship + TA_SHIP_MOBY, (int32_t)SHIP_MOBY);
+    puti(g_disc->card + g_disc->card_pending, -1);
+    puti(g_disc->debug + TA_DEBUG_FLAGS, 0xF);
     puti(PAGE_PLANETS + TA_PAGE_STATE, TA_MENU_PLANETS);
     puti(PAGE_CONFIRM + TA_PAGE_STATE, TA_MENU_CONFIRM);
 }
 
-/* ---- The hook point and the game's code behind it ---------------------------------------------- */
+/* ---- The hook point ---- */
 
 static void* g_travel; /* the mod's replacement of ShipTravelTo */
 static int g_travel_calls, g_travel_dest;
 static int g_hooks_taken;
 
-/* ShipTravelTo as the game's: the game mode 6 either way; another planet (or none) its travel
- * branch, which sets the level the loop's end flies to; the planet played the landing. */
+/* A stub of the game's ShipTravelTo. It always sets game mode 6. Another planet (or none) takes the
+ * travel branch, which sets the level the loop flies to when it ends; the planet being played
+ * takes the landing. */
 static void orig_travel(int32_t dest) {
     g_travel_calls++;
     g_travel_dest = dest;
-    puti(D->mode, 6);
+    puti(g_disc->mode, 6);
 
     // The travel branch.
-    if (dest != geti(D->current_level)) {
-        puti(D->load_level, dest);
+    if (dest != geti(g_disc->current_level)) {
+        puti(g_disc->load_level, dest);
     }
 }
 
@@ -116,13 +117,13 @@ static int fake_hook(
 ) {
     (void)mod;
 
-    // The one hook point the mod takes, by id or alias, as the port's loader takes either.
+    // The one hook point the mod takes, by id or alias, as the port's loader accepts either.
     if (strcmp(name, "rac1.ship.travel_to") != 0
         && strcmp(name, OPENRAC_RAC1_HOOK_Ship_TravelTo) != 0) {
         return OPENRAC_HOOK_UNKNOWN;
     }
 
-    // The SDK's signature, or a refusal as the port's.
+    // Refuse any signature but the SDK's, as the port does.
     if (strcmp(signature, OPENRAC_RAC1_SIG_Ship_TravelTo) != 0) {
         return OPENRAC_HOOK_SIGNATURE;
     }
@@ -137,12 +138,13 @@ static void travel(int32_t dest) {
     ((void (*)(int32_t))g_travel)(dest);
 }
 
-/* ---- The game function the mod calls ----------------------------------------------------------- */
+/* ---- The game function ---- */
 
 static int g_open_calls, g_open_state;
-static int g_camera_blocks; /* PauseAllSounds notes the pause for later and returns */
+static int g_camera_blocks; /* PauseAllSounds only notes the pause and returns */
 
-/* PauseAllSounds as the game's: the menu's state, its close request cleared, the game mode 3. */
+/* A stub of the game's PauseAllSounds: sets the menu's state, clears its close request and sets
+ * game mode 3. */
 static void fn_open_menu(int32_t state) {
     g_open_calls++;
     g_open_state = state;
@@ -154,14 +156,14 @@ static void fn_open_menu(int32_t state) {
 
     puti(MENU(TA_MENU_STATE), state);
     puti(MENU(TA_MENU_CLOSE), 0);
-    puti(D->mode, 3);
+    puti(g_disc->mode, 3);
 }
 
 static void* fake_function(const char* name) {
-    return strcmp(name, D->open_menu) == 0 ? (void*)fn_open_menu : NULL;
+    return strcmp(name, g_disc->open_menu) == 0 ? (void*)fn_open_menu : NULL;
 }
 
-/* ---- The callbacks the mod gives ---------------------------------------------------------------- */
+/* ---- The mod's callbacks ---- */
 
 static openrac_frame_fn g_frame_fn;
 static void* g_frame_user;
@@ -189,10 +191,10 @@ static void tick(void) {
     g_frame_fn(g_frame_user);
 }
 
-/* The report the pad callback got, as the game then reads it. */
+/* The last report passed to the pad callback, as the game then reads it. */
 static uint8_t g_report[18];
 
-/* Pad 0's report with these buttons held, through the mod; returns what the game then sees held. */
+/* Sends pad 0's report with these buttons held through the mod; returns what the game sees. */
 static uint32_t poll(uint32_t held) {
     memset(g_report, 0xFF, 2);
     memset(g_report + 2, 0x80, 4);
@@ -203,7 +205,7 @@ static uint32_t poll(uint32_t held) {
     return ta_report_held(g_report);
 }
 
-/* ---- The rest of the host table ----------------------------------------------------------------- */
+/* ---- The rest of the host table ---- */
 
 static openrac_input g_input;
 static char g_notice[256];
@@ -319,7 +321,7 @@ static int load_mod(void) {
     {
         const int r = g_load(&api, (openrac_mod*)&api);
 
-        // A refusal says why, for the test's output.
+        // Print why the load was refused, for the test's output.
         if (r != 0) {
             printf("load refused: %s\n", g_fail);
         }
@@ -328,13 +330,13 @@ static int load_mod(void) {
     }
 }
 
-static void counters(void) {
+static void reset_counters(void) {
     g_open_calls = g_travel_calls = g_notices = 0;
     g_open_state = g_travel_dest = -1;
     g_notice[0] = 0;
 }
 
-/* L1 and R1, then Select with them: the default combo, through to the tick's end. */
+/* Presses the default combo (L1 and R1, then Select with them), with a tick after each poll. */
 static void press_combo(void) {
     poll(TA_PAD_L1 | TA_PAD_R1);
     tick();
@@ -342,51 +344,51 @@ static void press_combo(void) {
     tick();
 }
 
-/* The planet select up, as the game's menu update leaves it after its first page switch. */
+/* Shows `page` as the game's menu update leaves it after a page switch. */
 static void menu_on(int page) {
     puti(MENU(TA_MENU_STATE), page);
     puti(MENU(TA_MENU_NEXT), 0);
     puti(MENU(TA_MENU_TIMER), 0);
 }
 
-/* The menu's close for the ship: update_pause_menu's close_pause_menu, the planet selected. */
+/* Closes the menu for the ship on `selected`, as update_pause_menu's close_pause_menu does. */
 static void menu_closing(int selected) {
     puti(MENU(TA_MENU_STATE), TA_MENU_CLOSING);
     puti(MENU(TA_MENU_CLOSE), TA_CLOSE_SHIP);
     puti(MENU(TA_MENU_TIMER), 2);
-    puti(D->menu_target, selected);
+    puti(g_disc->menu_target, selected);
 }
 
-/* The restore two ticks later, as update_pause_menu does it for a close request: 2 calls the
- * ship's travel (here the mod's hook) and leaves the game mode to it; any other plays on. */
+/* Runs the restore two ticks later, as update_pause_menu does for each close request: 2 calls the
+ * ship's travel (here the mod's hook) and leaves the game mode to it; any other resumes play. */
 static void menu_restore(void) {
     const int request = geti(MENU(TA_MENU_CLOSE));
 
     // The ship's travel.
     if (request == TA_CLOSE_SHIP) {
-        travel(geti(D->menu_target));
+        travel(geti(g_disc->menu_target));
         return;
     }
 
-    puti(D->mode, 0);
+    puti(g_disc->mode, 0);
 }
 
-/* The same restore on OpenRAC's PAL build, which calls the game's ShipTravelTo past the hook. */
+/* The same restore as OpenRAC's PAL build runs it: the game's ShipTravelTo, without the hook. */
 static void menu_restore_unhooked(void) {
     const int request = geti(MENU(TA_MENU_CLOSE));
 
-    // The ship's travel, the hook skipped.
+    // The ship's travel, skipping the hook.
     if (request == TA_CLOSE_SHIP) {
-        orig_travel(geti(D->menu_target));
+        orig_travel(geti(g_disc->menu_target));
         return;
     }
 
-    puti(D->mode, 0);
+    puti(g_disc->mode, 0);
 }
 
-/* ---- The tests ----------------------------------------------------------------------------------- */
+/* ---- The tests ---- */
 
-static void test_refusals(void) {
+static void test_load_refusals(void) {
     // Another game.
     g_game = "rac2";
     CHECK_EQ(load_mod(), 1);
@@ -395,7 +397,7 @@ static void test_refusals(void) {
     CHECK_EQ(g_callbacks, 0);
     g_game = "rac1";
 
-    // A disc it has no row for.
+    // A disc with no row.
     {
         const char* kept = g_version;
         g_version = "jp";
@@ -412,48 +414,48 @@ static void test_takes(void) {
     CHECK_EQ(g_hooks_taken, 1);
     CHECK_EQ(g_travel != NULL, 1);
     CHECK_EQ(g_callbacks, 2);
-    CHECK_EQ(strstr(g_last_log, "L1 + R1, then Select") != NULL, 1);
+    CHECK_EQ(strstr(g_last_log, "L1 + R1 + Select") != NULL, 1);
 }
 
 static void test_open_and_back_out(void) {
     reset_game();
-    counters();
+    reset_counters();
 
-    // The shoulders alone: the game's look and crouch, nothing of the mod's.
+    // The shoulders alone are the game's look and crouch; the mod does nothing.
     CHECK_EQ(poll(TA_PAD_L1 | TA_PAD_R1), TA_PAD_L1 | TA_PAD_R1);
     tick();
     CHECK_EQ(g_open_calls, 0);
 
-    // Select with them: the game never sees it, and the menu opens at the tick's end.
+    // Select with them is hidden from the game, and the menu opens at the end of the tick.
     CHECK_EQ(poll(TA_PAD_L1 | TA_PAD_R1 | TA_PAD_SELECT), TA_PAD_L1 | TA_PAD_R1);
     CHECK_EQ(g_open_calls, 0);
     tick();
     CHECK_EQ(g_open_calls, 1);
     CHECK_EQ(g_open_state, TA_MENU_SHIP_ENTRY);
-    CHECK_EQ(geti(D->mode), 3);
-    CHECK_EQ(geti(D->mode_ticks), 0);
+    CHECK_EQ(geti(g_disc->mode), 3);
+    CHECK_EQ(geti(g_disc->mode_ticks), 0);
     CHECK_EQ(g_notices, 0);
 
-    // Select still held: still the mod's; let go, the pad is the game's again.
+    // Select stays hidden while held; once released, the pad is the game's again.
     CHECK_EQ(poll(TA_PAD_SELECT), 0);
     CHECK_EQ(poll(0), 0);
     CHECK_EQ(poll(TA_PAD_CROSS), TA_PAD_CROSS);
 
-    // The list up; Triangle closes it with the ship's planet, the hero's.
+    // On the list, Triangle closes it on the planet being played.
     menu_on(TA_MENU_PLANETS);
     poll(0);
     poll(TA_PAD_TRIANGLE);
     menu_closing(3);
 
-    // The next poll turns the close into the map's: play on in place.
+    // The next poll turns the close into the map's, so play resumes in place.
     poll(0);
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_TO_PLAY);
     tick();
     menu_restore();
     CHECK_EQ(g_travel_calls, 0);
-    CHECK_EQ(geti(D->mode), 0);
+    CHECK_EQ(geti(g_disc->mode), 0);
 
-    // The menu is over: the ship's own menu after it is the game's.
+    // The menu is over, so a later travel from the ship's own menu is the game's.
     tick();
     travel(3);
     CHECK_EQ(g_travel_calls, 1);
@@ -462,16 +464,16 @@ static void test_open_and_back_out(void) {
 
 static void test_back_out_at_tick(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // Start on the confirm page: the game's way out with the ship's planet.
+    // Start on the confirm page closes on the planet being played.
     menu_on(TA_MENU_CONFIRM);
     poll(0);
     poll(TA_PAD_START);
     menu_closing(3);
 
-    // No poll before the restore: the tick's end turns it all the same.
+    // With no poll before the restore, the end of the tick still steers the close.
     tick();
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_TO_PLAY);
     menu_restore();
@@ -480,10 +482,10 @@ static void test_back_out_at_tick(void) {
 
 static void test_travel(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // Down the list, Cross, then Cross on the confirm page for Novalis (level 1).
+    // Cross on Novalis (level 1) in the list, then Cross on its confirm page.
     menu_on(TA_MENU_PLANETS);
     poll(0);
     poll(TA_PAD_CROSS);
@@ -506,10 +508,10 @@ static void test_travel(void) {
 
 static void test_cross_on_switch(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // Cross in the tick the confirm page's switch ends: that page takes it.
+    // Cross in the tick the switch to the confirm page ends goes to that page.
     puti(MENU(TA_MENU_STATE), TA_MENU_SWITCHING);
     puti(MENU(TA_MENU_NEXT), (int32_t)PAGE_CONFIRM);
     puti(MENU(TA_MENU_TIMER), 1);
@@ -517,55 +519,55 @@ static void test_cross_on_switch(void) {
     menu_closing(3);
     tick();
 
-    // The planet the hero is on, chosen: steered to the game's travel branch.
+    // The planet being played, chosen, is steered to the game's travel branch.
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_SHIP);
-    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+    CHECK_EQ(geti(g_disc->menu_target), TA_NO_PLANET);
     menu_restore();
     CHECK_EQ(g_travel_calls, 1);
     CHECK_EQ(g_travel_dest, TA_NO_PLANET);
-    CHECK_EQ(geti(D->load_level), 3);
+    CHECK_EQ(geti(g_disc->load_level), 3);
 }
 
 static void test_restart(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // Cross on the confirm page of the planet he is on.
+    // Cross on the confirm page of the planet being played.
     menu_on(TA_MENU_CONFIRM);
     poll(0);
     poll(TA_PAD_CROSS);
     menu_closing(3);
     poll(0);
 
-    // While it closes: the close stays the ship's, its target no planet.
+    // While it closes, the close stays the ship's and its target becomes no planet.
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_SHIP);
-    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+    CHECK_EQ(geti(g_disc->menu_target), TA_NO_PLANET);
     tick();
-    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+    CHECK_EQ(geti(g_disc->menu_target), TA_NO_PLANET);
 
-    // The restore: the game's ShipTravelTo for no planet (its travel branch: the save resumes on
-    // the planet played), then the load level put back to the planet he is on, in the hook.
+    // The restore calls the game's ShipTravelTo for no planet (its travel branch; the save resumes
+    // on the planet being played), then the hook puts the load level back to that planet.
     menu_restore();
     CHECK_EQ(g_travel_calls, 1);
     CHECK_EQ(g_travel_dest, TA_NO_PLANET);
-    CHECK_EQ(geti(D->mode), 6);
-    CHECK_EQ(geti(D->load_level), 3);
+    CHECK_EQ(geti(g_disc->mode), 6);
+    CHECK_EQ(geti(g_disc->load_level), 3);
 
-    // Nothing more: the menu is over, the next poll and tick leave it so.
+    // The menu is over, and the next poll and tick change nothing.
     poll(0);
     tick();
-    CHECK_EQ(geti(D->load_level), 3);
+    CHECK_EQ(geti(g_disc->load_level), 3);
     travel(1);
     CHECK_EQ(g_travel_dest, 1);
 }
 
 static void test_restart_unhooked(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // As on OpenRAC's PAL build: the game's ShipTravelTo runs past the hook.
+    // As on OpenRAC's PAL build, the game's ShipTravelTo runs without the hook.
     menu_on(TA_MENU_CONFIRM);
     poll(0);
     poll(TA_PAD_CROSS);
@@ -573,15 +575,15 @@ static void test_restart_unhooked(void) {
     tick();
     menu_restore_unhooked();
     CHECK_EQ(g_travel_dest, TA_NO_PLANET);
-    CHECK_EQ(geti(D->load_level), TA_NO_PLANET);
+    CHECK_EQ(geti(g_disc->load_level), TA_NO_PLANET);
 
-    // The next poll, in the ship's flight out (game mode 6), puts the planet back.
+    // The next poll, during the ship's flight out (game mode 6), puts the planet back.
     poll(0);
-    CHECK_EQ(geti(D->load_level), 3);
+    CHECK_EQ(geti(g_disc->load_level), 3);
 
-    // Or the tick's end, when no poll came first.
+    // Or the end of the tick, when no poll came first.
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
     menu_on(TA_MENU_CONFIRM);
     poll(0);
@@ -590,9 +592,9 @@ static void test_restart_unhooked(void) {
     tick();
     menu_restore_unhooked();
     tick();
-    CHECK_EQ(geti(D->load_level), 3);
+    CHECK_EQ(geti(g_disc->load_level), 3);
 
-    // The level the travel loads: the menu goes with the old one.
+    // Loading the new level ends the menu.
     g_level = 4;
     tick();
     g_level = 3;
@@ -601,11 +603,11 @@ static void test_restart_unhooked(void) {
 
 static void test_restart_missed(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // The restore before any poll or tick's end saw the close: the planet he is on reaches the hook,
-    // which leaves it to the game (its landing) rather than force a trip.
+    // The restore runs before any poll or tick end saw the close. The planet being played reaches
+    // the hook, which leaves it to the game (the landing) rather than force a trip.
     menu_on(TA_MENU_CONFIRM);
     poll(0);
     poll(TA_PAD_CROSS);
@@ -613,37 +615,37 @@ static void test_restart_missed(void) {
     menu_restore();
     CHECK_EQ(g_travel_calls, 1);
     CHECK_EQ(g_travel_dest, 3);
-    CHECK_EQ(geti(D->load_level), 0);
+    CHECK_EQ(geti(g_disc->load_level), 0);
     poll(0);
     tick();
 
-    // A mod before this one turning the steered -1 into the planet he is on: the same, and no load
-    // level put back later (a Quit Game's -1 afterwards stays the title).
+    // An earlier mod turns the steered -1 back into the planet being played: the same, and no load
+    // level is put back later (a Quit Game's -1 afterwards stays the title).
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
     menu_on(TA_MENU_CONFIRM);
     poll(0);
     poll(TA_PAD_CROSS);
     menu_closing(3);
     tick();
-    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+    CHECK_EQ(geti(g_disc->menu_target), TA_NO_PLANET);
     travel(3);
     CHECK_EQ(g_travel_dest, 3);
-    puti(D->load_level, TA_NO_PLANET);
+    puti(g_disc->load_level, TA_NO_PLANET);
     poll(0);
     tick();
-    CHECK_EQ(geti(D->load_level), TA_NO_PLANET);
+    CHECK_EQ(geti(g_disc->load_level), TA_NO_PLANET);
 }
 
 static void test_landing_unlisted(void) {
     reset_game();
-    counters();
+    reset_counters();
 
-    // Veldin's first visit: level 0, never in the ship's list. Blast Off on it is the game's landing.
+    // Veldin's first visit (level 0) is never in the ship's list: Blast Off there is the landing.
     g_level = 0;
-    puti(D->current_level, 0);
-    puti(D->galaxy_list, 0);
+    puti(g_disc->current_level, 0);
+    puti(g_disc->galaxy_list, 0);
     press_combo();
     menu_on(TA_MENU_CONFIRM);
     poll(0);
@@ -651,21 +653,21 @@ static void test_landing_unlisted(void) {
     menu_closing(0);
     poll(0);
     tick();
-    CHECK_EQ(geti(D->menu_target), 0);
+    CHECK_EQ(geti(g_disc->menu_target), 0);
     menu_restore();
     CHECK_EQ(g_travel_calls, 1);
     CHECK_EQ(g_travel_dest, 0);
-    CHECK_EQ(geti(D->load_level), 0);
+    CHECK_EQ(geti(g_disc->load_level), 0);
     poll(0);
     tick();
 }
 
 static void test_hook_backstop(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // A back-out the poll and the tick did not see (the restore came first): the hook plays on in
+    // A back-out the poll and tick did not see (the restore came first): the hook resumes play in
     // place, as the map's close does, and calls no travel.
     menu_on(TA_MENU_PLANETS);
     poll(0);
@@ -673,34 +675,34 @@ static void test_hook_backstop(void) {
     puti(MENU(TA_MENU_CLOSE), TA_CLOSE_SHIP);
     travel(3);
     CHECK_EQ(g_travel_calls, 0);
-    CHECK_EQ(geti(D->mode), 0);
+    CHECK_EQ(geti(g_disc->mode), 0);
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_TO_PLAY);
 
-    // The menu is over.
+    // The menu is over, so the next travel is the game's.
     travel(3);
     CHECK_EQ(g_travel_calls, 1);
 }
 
 static void test_movie_round_trip(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // Circle on the confirm page: the planet's infobot movie, the menu back after it.
+    // Circle on the confirm page plays the planet's infobot movie, then the menu comes back.
     menu_on(TA_MENU_CONFIRM);
     poll(0);
     poll(TA_PAD_CIRCLE);
     puti(MENU(TA_MENU_PENDING_PAGE), (int32_t)PAGE_CONFIRM);
-    puti(D->mode, 0);
+    puti(g_disc->mode, 0);
     tick();
-    puti(D->mode, 1);
+    puti(g_disc->mode, 1);
     tick();
-    puti(D->mode, 0);
+    puti(g_disc->mode, 0);
     tick();
 
-    // Back: the game reopens it (PauseAllSounds) and the page comes back; still the mod's menu.
+    // The game reopens the menu (PauseAllSounds). It is still the mod's: a back-out resumes play.
     puti(MENU(TA_MENU_PENDING_PAGE), 0);
-    puti(D->mode, 3);
+    puti(g_disc->mode, 3);
     menu_on(TA_MENU_PLANETS);
     poll(0);
     poll(TA_PAD_TRIANGLE);
@@ -711,15 +713,15 @@ static void test_movie_round_trip(void) {
 
 static void test_level_change(void) {
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
 
-    // Another level loaded (a travel the hook did not see): the menu went with the old one.
+    // Another level loaded (a travel the hook did not see) ends the menu.
     g_level = 1;
-    puti(D->current_level, 1);
+    puti(g_disc->current_level, 1);
     tick();
     g_level = 3;
-    puti(D->current_level, 3);
+    puti(g_disc->current_level, 3);
     menu_on(TA_MENU_PLANETS);
     poll(TA_PAD_TRIANGLE);
     menu_closing(3);
@@ -727,20 +729,20 @@ static void test_level_change(void) {
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_SHIP);
 }
 
-static void test_refused(void) {
-    // Down: Select still taken, nothing opens, the notice says why, then goes.
+static void test_open_refusals(void) {
+    // Down: Select is still hidden, nothing opens, and the notice says why, then clears.
     reset_game();
-    counters();
+    reset_counters();
     puti(HERO(TA_HERO_HP), 0);
     poll(TA_PAD_L1 | TA_PAD_R1);
     CHECK_EQ(poll(TA_PAD_L1 | TA_PAD_R1 | TA_PAD_SELECT), TA_PAD_L1 | TA_PAD_R1);
     tick();
     CHECK_EQ(g_open_calls, 0);
-    CHECK_EQ(geti(D->mode), 0);
+    CHECK_EQ(geti(g_disc->mode), 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_DOWN)), 0);
     poll(0);
 
-    // The notice's time.
+    // The notice stays for its full time.
     for (int i = 0; i < 149; i++) {
         tick();
     }
@@ -751,7 +753,7 @@ static void test_refused(void) {
 
     // Clank.
     reset_game();
-    counters();
+    reset_counters();
     putb(HERO(TA_HERO_VEHICLE), 1);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
@@ -760,16 +762,16 @@ static void test_refused(void) {
 
     // No ship.
     reset_game();
-    counters();
-    puti(D->ship + TA_SHIP_MOBY, 0);
+    reset_counters();
+    puti(g_disc->ship + TA_SHIP_MOBY, 0);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_NO_SHIP)), 0);
     poll(0);
 
-    // The ship hidden by the story (Novalis's first visit: the dropship's update hides it).
+    // The ship hidden by the story (on Novalis's first visit the dropship's update hides it).
     reset_game();
-    counters();
+    reset_counters();
     g_mem[SHIP_MOBY + TA_MOBY_FLAGS] = 0x03;
     press_combo();
     CHECK_EQ(g_open_calls, 0);
@@ -778,57 +780,57 @@ static void test_refused(void) {
 
     // Orxon's story scenes at the ship.
     reset_game();
-    counters();
+    reset_counters();
     putb(SHIP_MOBY + TA_MOBY_STATE, TA_SHIP_MOBY_SCENES);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_SHIP_BUSY)), 0);
     poll(0);
 
-    // A dialog next (the disc's own bits of the freeze flags).
+    // A dialog next (the disc's bits of the freeze flags).
     reset_game();
-    counters();
-    puti(D->freeze_flags, (int32_t)D->freeze_mask);
+    reset_counters();
+    puti(g_disc->freeze_flags, (int32_t)g_disc->freeze_mask);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_DIALOG)), 0);
     poll(0);
 
-    // The card at work (the disc's own fields).
+    // The card busy (the disc's fields).
     reset_game();
-    counters();
-    puti(D->card + D->card_pending, 0);
+    reset_counters();
+    puti(g_disc->card + g_disc->card_pending, 0);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_CARD)), 0);
     poll(0);
 
-    // The debug menu's step.
+    // The debug menu stepping.
     reset_game();
-    counters();
-    puti(D->debug + TA_DEBUG_STEPS, 3);
+    reset_counters();
+    puti(g_disc->debug + TA_DEBUG_STEPS, 3);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_STEPPING)), 0);
     poll(0);
 
-    // The camera holding the pause off: PauseAllSounds is never called.
+    // While the camera holds the pause off, PauseAllSounds is never called.
     reset_game();
-    counters();
-    puti(D->camera_suppress, 1);
+    reset_counters();
+    puti(g_disc->camera_suppress, 1);
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     CHECK_EQ(strcmp(g_notice, ta_why_text(TA_CAMERA)), 0);
     poll(0);
 
-    // PauseAllSounds that opens nothing after all: no menu of the mod's.
+    // If PauseAllSounds opens nothing after all, the mod has no menu.
     reset_game();
-    counters();
+    reset_counters();
     g_camera_blocks = 1;
     press_combo();
     CHECK_EQ(g_open_calls, 1);
     g_camera_blocks = 0;
-    puti(D->mode, 3);
+    puti(g_disc->mode, 3);
     menu_on(TA_MENU_PLANETS);
     poll(0);
     poll(TA_PAD_TRIANGLE);
@@ -839,10 +841,10 @@ static void test_refused(void) {
 }
 
 static void test_not_ours(void) {
-    // A cutscene: the game keeps every button, the mod asks nothing.
+    // In a cutscene the game keeps every button and the mod does nothing.
     reset_game();
-    counters();
-    puti(D->mode, 2);
+    reset_counters();
+    puti(g_disc->mode, 2);
     poll(TA_PAD_L1 | TA_PAD_R1);
     CHECK_EQ(poll(TA_PAD_L1 | TA_PAD_R1 | TA_PAD_SELECT), TA_PAD_L1 | TA_PAD_R1 | TA_PAD_SELECT);
     tick();
@@ -851,7 +853,7 @@ static void test_not_ours(void) {
     poll(0);
 
     // The pause menu.
-    puti(D->mode, 3);
+    puti(g_disc->mode, 3);
     poll(TA_PAD_L1 | TA_PAD_R1);
     CHECK_EQ(poll(TA_PAD_L1 | TA_PAD_R1 | TA_PAD_SELECT), TA_PAD_L1 | TA_PAD_R1 | TA_PAD_SELECT);
     tick();
@@ -867,7 +869,7 @@ static void test_not_ours(void) {
     CHECK_EQ(g_open_calls, 0);
     poll(0);
 
-    // In play, Select alone is the map's; one shoulder and Select too; pad 1 is not the hero's.
+    // In play, Select alone is the map's, and so is one shoulder with Select; pad 1 is ignored.
     reset_game();
     CHECK_EQ(poll(TA_PAD_SELECT), TA_PAD_SELECT);
     poll(0);
@@ -885,9 +887,9 @@ static void test_not_ours(void) {
 static void test_other_combo(void) {
     s_combo = "l2_r2_select";
     CHECK_EQ(load_mod(), 0);
-    CHECK_EQ(strstr(g_last_log, "L2 + R2, then Select") != NULL, 1);
+    CHECK_EQ(strstr(g_last_log, "L2 + R2 + Select") != NULL, 1);
     reset_game();
-    counters();
+    reset_counters();
 
     // L1 and R1 do nothing now.
     press_combo();
@@ -910,7 +912,7 @@ static void test_key(void) {
     CHECK_EQ(load_mod(), 0);
     CHECK_EQ(strstr(g_last_log, "or the key KeyT") != NULL, 1);
     reset_game();
-    counters();
+    reset_counters();
     memset(&g_input, 0, sizeof g_input);
     g_input.size = sizeof g_input;
 
@@ -921,7 +923,7 @@ static void test_key(void) {
     tick();
     CHECK_EQ(g_open_calls, 0);
 
-    // T pressed in play: it opens, and no button of the pad is taken.
+    // T pressed in play opens the menu, and no pad button is hidden.
     g_input.overlay = 0;
     CHECK_EQ(poll(TA_PAD_SELECT), TA_PAD_SELECT);
     tick();
@@ -933,7 +935,7 @@ static void test_key(void) {
     CHECK_EQ(load_mod(), 0);
     CHECK_EQ(g_hooks_taken, 1);
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
     CHECK_EQ(g_open_calls, 0);
     poll(0);
@@ -946,20 +948,20 @@ static void test_nothing_set(void) {
     CHECK_EQ(load_mod(), 0);
     CHECK_EQ(g_hooks_taken, 0);
     CHECK_EQ(g_callbacks, 0);
-    CHECK_EQ(strstr(g_last_log, "nothing taken") != NULL, 1);
+    CHECK_EQ(strstr(g_last_log, "inactive") != NULL, 1);
 
-    // An unknown choice is the default.
+    // An unknown choice falls back to the default.
     s_combo = "zz";
     CHECK_EQ(load_mod(), 0);
     CHECK_EQ(g_hooks_taken, 1);
     s_combo = "l1_r1_select";
 
-    // A trace on loads the same.
+    // With the trace on, the mod loads and works the same.
     s_trace = 1;
     CHECK_EQ(load_mod(), 0);
     CHECK_EQ(strstr(g_last_log, "trace on") != NULL, 1);
     reset_game();
-    counters();
+    reset_counters();
     press_combo();
     CHECK_EQ(g_open_calls, 1);
     poll(0);
@@ -971,7 +973,7 @@ int main(int argc, char** argv) {
     query_fn query;
     openrac_mod_info info;
 
-    // The library's path.
+    // The library's path is required.
     if (argc < 2) {
         printf("usage: %s <library>\n", argv[0]);
         return 2;
@@ -979,7 +981,7 @@ int main(int argc, char** argv) {
 
     lib = LIB_OPEN(argv[1]);
 
-    // The library loads.
+    // The library must open.
     if (lib == NULL) {
         printf("cannot open %s\n", argv[1]);
         return 2;
@@ -988,7 +990,7 @@ int main(int argc, char** argv) {
     query = (query_fn)LIB_SYM(lib, "openrac_mod_query");
     g_load = (load_fn)LIB_SYM(lib, "openrac_mod_load");
 
-    // Both entry points.
+    // It must export both entry points.
     if (query == NULL || g_load == NULL) {
         printf("no openrac_mod_query or openrac_mod_load\n");
         return 2;
@@ -1004,14 +1006,14 @@ int main(int argc, char** argv) {
 
     g_mem = (uint8_t*)calloc(MEMORY_SIZE, 1);
 
-    // Each disc's row, its addresses inside the test's memory.
+    // Each disc's row, with its addresses inside the test's memory.
     for (unsigned i = 0; i < sizeof k_ta_discs / sizeof k_ta_discs[0]; i++) {
-        D = &k_ta_discs[i];
-        g_version = D->version;
-        printf("disc %s\n", D->version);
-        CHECK_EQ(D->menu + 0x148 < MEMORY_SIZE, 1);
+        g_disc = &k_ta_discs[i];
+        g_version = g_disc->version;
+        printf("disc %s\n", g_disc->version);
+        CHECK_EQ(g_disc->menu + 0x148 < MEMORY_SIZE, 1);
         reset_game();
-        test_refusals();
+        test_load_refusals();
         test_takes();
         test_open_and_back_out();
         test_back_out_at_tick();
@@ -1024,7 +1026,7 @@ int main(int argc, char** argv) {
         test_hook_backstop();
         test_movie_round_trip();
         test_level_change();
-        test_refused();
+        test_open_refusals();
         test_not_ours();
         test_other_combo();
         test_key();

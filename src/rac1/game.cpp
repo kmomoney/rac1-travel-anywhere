@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Ratchet & Clank's part of the mod: the ship's planet select opened from anywhere in play, a
-// back-out from it that plays on where Ratchet was, and the planet he is on, chosen, travelled to as
-// any other planet is, the level starting anew (DESIGN.md). The decisions are src/rac1/travel.h,
-// apart from game memory; this file reads the game into them and applies what they return.
-// Addresses: discs.h; offsets: rac1.h.
+// Ratchet & Clank's part of the mod (DESIGN.md). It opens the ship's planet select from anywhere
+// in play, resumes play where Ratchet was when the player backs out, and turns choosing the planet
+// he is on into an ordinary trip to it, which restarts the level. The decisions are in
+// src/rac1/travel.h, with no game memory; this file reads the game for them and applies what they
+// return. Addresses are in discs.h, offsets in rac1.h.
 //
-// Where each part acts:
-//   pad report  on_pad: the combo (or the key) in play asks for the menu, and its last button is
-//               the mod's until let go; while the mod's menu is up, the presses that can close it,
-//               and the close steered (below); after a restart's travel branch, its load level
-//   tick's end  on_frame: the menu opened as the ship's take-off opens it (PauseAllSounds in the
-//               ship's state 14), or a notice saying why not; the close steered: a back-out turned
-//               into the map's close, which plays on in place, the planet he is on into the game's
-//               travel branch (the restore's target -1); the menu's end
-//   the close   rac1.ship.travel_to: the game's travel or landing, as the ship's; a restart's load
-//               level put back at once; what the poll and the tick's end missed, done all the same
-//               (on PAL the port calls no hook here: DESIGN.md section 2)
+// Where each part runs:
+//   pad report  on_pad: in play, the combo (or the key) asks for the menu, and the combo's last
+//               button is hidden from the game until released. While the mod's menu is up, it
+//               records the presses that can close it and steers the close (below). After a
+//               restart's travel branch, it sets the load level.
+//   tick end    on_frame: opens the menu the way the ship's take-off does (PauseAllSounds with the
+//               menu in state 14), or shows a notice saying why not. Steers the close: a back-out
+//               becomes the map's close, which resumes play in place, and the current planet
+//               becomes the game's travel branch (the restore's target set to -1). Ends the menu.
+//   the close   rac1.ship.travel_to: the game's travel or landing, as for the ship. Puts a
+//               restart's load level back at once, and does whatever the pad and tick missed. On
+//               PAL the port never calls this hook (DESIGN.md section 2).
 #include "rac1/game.h"
 
 #include <cstdint>
@@ -35,9 +36,9 @@ namespace travel_anywhere::rac1 {
 namespace {
 
 using openrac::gaddr;
-namespace hp = openrac::rac1;
+namespace hooks = openrac::rac1;
 
-// The levels the game has (0 Veldin to 18 Veldin's second visit).
+// The number of levels: 0 (Veldin) to 18 (Veldin's second visit).
 constexpr int kLevels = 19;
 // The ticks a refusal's notice stays on screen.
 constexpr int kNoticeTicks = 150;
@@ -47,46 +48,49 @@ constexpr gaddr kMemoryEnd = 0x02000000u;
 // The settings, read once at load.
 struct Settings {
     ta_combo combo = ta_combo_of(TA_COMBO_L1_R1_SELECT);
-    int key = 0;  // a keyboard key (openrac/keys.h's bind), 0 none
+    int key = 0;  // a keyboard key (an openrac/keys.h bind), 0 for none
     bool trace = false;
 };
 
 // What the callbacks keep between calls. Reset in load (the load test loads the mod several times).
 struct State {
-    std::uint32_t pad_held = 0;  // pad 0's buttons in its last report, for the presses
-    bool swallow = false;        // the combo's last button is the mod's until it is let go
-    bool request = false;        // the trigger came: the menu opens at the tick's end
-    ta_session session{};        // the mod's planet select, from its open to its close
-    bool steered = false;        // its close looked at while closing (steer_close)
-    int steer = TA_CLOSE_GAME;   // what that close was made: the game's, the map's, a restart
+    std::uint32_t pad_held = 0;  // pad 0's buttons held in its last report
+    bool swallow = false;        // the combo's last button is hidden from the game until released
+    bool request = false;        // the trigger fired: the menu opens at the end of the tick
+    ta_session session{};        // the mod's planet select, from its opening to its close
+    bool steered = false;        // steer_close has handled the menu's close
+    int steer = TA_CLOSE_GAME;   // what steer_close made of it (TA_CLOSE_*)
     int restart = -1;            // the level a restart travels to, until its load level is set
     int notice_ticks = 0;        // the ticks the mod's notice has left on screen
 };
 
 openrac::Mod* s_mod = nullptr;
 const ta_disc* s_disc = nullptr;
-Settings s_set;
-State s;
+Settings s_settings;
+State s_state;
 
+// PauseAllSounds: opens the menu in the given state.
 using OpenMenuFn = void (*)(int32_t);
 OpenMenuFn s_open_menu = nullptr;
 
+// Reads a T from game memory.
 template <class T>
 T get(gaddr address) {
     return s_mod->memory().read<T>(address);
 }
 
+// Writes a T to game memory.
 template <class T>
 void put(gaddr address, T value) {
     s_mod->memory().write<T>(address, value);
 }
 
-// An executable global's address for the code loaded now.
+// Returns an executable global's address in the copy the loaded code uses.
 gaddr exe(gaddr address) {
     return s_mod->relocate(address);
 }
 
-// A global of level 0's program, at the loaded level's copy.
+// Returns a global of level 0's program at its address in the loaded level's copy.
 gaddr level0(gaddr address) {
     return s_mod->relocate_level(0, address);
 }
@@ -96,30 +100,31 @@ bool valid(gaddr address) {
     return address != 0 && address < kMemoryEnd;
 }
 
-// The level whose program runs, or -1.
+// Returns the level whose program runs, or -1 for none.
 int level_loaded() {
     const int level = s_mod->loaded_level();
     return level >= 0 && level < kLevels ? level : -1;
 }
 
+// Returns the level loop's game mode (0 in play).
 int32_t game_mode() {
     return get<int32_t>(level0(s_disc->mode));
 }
 
-// A line in the log when the trace is on.
+// Logs a line when the trace is on.
 void trace(const std::string& line) {
-    // Only for a bug report.
-    if (s_set.trace) {
+    // The trace is for bug reports, so it is off unless asked for.
+    if (s_settings.trace) {
         s_mod->info(line);
     }
 }
 
-// The game as ta_may_open reads it.
+// Reads the game state that ta_may_open decides on.
 ta_play read_play() {
     ta_play p{};
     p.level = level_loaded();
 
-    // No level: nothing else is the game's yet.
+    // With no level loaded, the rest of the game state is not read.
     if (p.level < 0) {
         return p;
     }
@@ -139,7 +144,7 @@ ta_play read_play() {
 
     const gaddr ship = get<std::uint32_t>(d.ship + TA_SHIP_MOBY);
 
-    // The ship to board: its moby, shown (the game's own boarding needs both, DESIGN.md section 4).
+    // The game boards only a ship that has a moby and is not hidden (DESIGN.md section 4).
     if (valid(ship)) {
         p.ship = (get<std::uint16_t>(ship + TA_MOBY_FLAGS) & TA_MOBY_HIDDEN) == 0;
         p.ship_scenes = get<std::uint8_t>(ship + TA_MOBY_STATE) == TA_SHIP_MOBY_SCENES;
@@ -159,7 +164,7 @@ ta_play read_play() {
     return p;
 }
 
-// What the trace says of the game when the trigger comes.
+// Formats the game state for the trace when the trigger fires.
 std::string describe(const ta_play& p) {
     char line[320];
     std::snprintf(
@@ -192,15 +197,17 @@ std::string describe(const ta_play& p) {
     return line;
 }
 
-// A line at the top of the picture, for a while, where the port can show one.
+// Shows `text` at the top of the screen for kNoticeTicks, where the port has notices. An empty
+// text clears the notice.
 void notice(const char* text) {
-    // A port before 1.9 shows none.
+    // A port before interface 1.9 shows no notices, so the timer starts only when this one did.
     if (s_mod->play_notice(text)) {
-        s.notice_ticks = text[0] != 0 ? kNoticeTicks : 0;
+        s_state.notice_ticks = text[0] != 0 ? kNoticeTicks : 0;
     }
 }
 
-// The menu's page that a poll's presses reach (ta_menu_page), from the menu as the poll finds it.
+// Returns the state of the page this poll's presses reach (ta_menu_page), read before the menu
+// updates.
 int menu_page() {
     const gaddr menu = exe(s_disc->menu);
     const gaddr next = get<std::uint32_t>(menu + TA_MENU_NEXT);
@@ -213,11 +220,11 @@ int menu_page() {
     );
 }
 
-// Whether the ship's list (gGalaxyList) holds the level played.
+// Returns whether the ship's list (gGalaxyList) holds the level being played.
 bool current_listed() {
     std::int32_t list[TA_GALAXY_LIST_LEN];
 
-    // Each entry.
+    // Copy the list out of game memory for ta_listed.
     for (int i = 0; i < TA_GALAXY_LIST_LEN; i++) {
         list[i] = get<std::int32_t>(s_disc->galaxy_list + 4u * i);
     }
@@ -225,31 +232,31 @@ bool current_listed() {
     return ta_listed(list, TA_GALAXY_LIST_LEN, get<int32_t>(s_disc->current_level));
 }
 
-// The restart's load level: ShipTravelTo's travel branch, run for no planet, leaves the level loop's
-// end bound for -1 (the title); the planet he is on goes there, in the tick it ran or the next
-// (the loop's end reads it after the ship's flight out, seconds later).
+// Sets a restart's load level. ShipTravelTo's travel branch, run for no planet, sets the load level
+// to -1 (the title); this puts the planet being played there instead, in the tick the branch ran or
+// the next. The level loop reads it only after the ship's flight out, seconds later.
 void set_restart_level() {
     const gaddr load = level0(s_disc->load_level);
 
-    // No restart waiting, or its travel branch not run yet.
-    if (s.restart < 0 || game_mode() != 6 || get<int32_t>(load) != TA_NO_PLANET) {
+    // Wait for a restart whose travel branch has run: game mode 6, load level -1.
+    if (s_state.restart < 0 || game_mode() != 6 || get<int32_t>(load) != TA_NO_PLANET) {
         return;
     }
 
-    put<int32_t>(load, s.restart);
-    trace("restart: the load level set to planet " + std::to_string(s.restart));
-    s.restart = -1;
+    put<int32_t>(load, s_state.restart);
+    trace("restart: the load level set to planet " + std::to_string(s_state.restart));
+    s_state.restart = -1;
 }
 
-// The mod's menu while it closes (its state 20, two ticks before play): what its restore does next,
-// steered by what it reads (update_pause_menu's restore, DESIGN.md sections 1 and 2). A back-out:
-// the close request the ship's travel would follow becomes the one the map's close follows, so the
-// game itself plays on where Ratchet was. The planet he is on, chosen: the restore's target becomes
-// no planet, so the game's ShipTravelTo takes its travel branch (the save, the flight) rather than
-// the landing; the load level it then sets goes back to this planet (set_restart_level).
+// Steers the mod's menu while it closes (state 20, two ticks before the restore) by changing what
+// update_pause_menu's restore reads (DESIGN.md sections 1 and 2). A back-out gets the map's close
+// request instead of the ship's, so the game resumes play where Ratchet was. When the planet being
+// played is chosen, the restore's target becomes no planet, so ShipTravelTo takes its travel branch
+// (the save, the flight) rather than the landing; set_restart_level then puts this planet back as
+// the load level.
 void steer_close() {
-    // Not the mod's menu, or done already.
-    if (!s.session.open || s.steered) {
+    // Steer only the mod's own menu, and only once.
+    if (!s_state.session.open || s_state.steered) {
         return;
     }
 
@@ -257,7 +264,7 @@ void steer_close() {
     const bool closing = get<int32_t>(menu + TA_MENU_STATE) == TA_MENU_CLOSING
                          && get<int32_t>(menu + TA_MENU_CLOSE) == TA_CLOSE_SHIP;
 
-    // Not closing for the ship yet.
+    // Only a close that would call ShipTravelTo is steered.
     if (!closing) {
         return;
     }
@@ -265,11 +272,11 @@ void steer_close() {
     const gaddr target = level0(s_disc->menu_target);
     const int dest = get<int32_t>(target);
     const int current = get<int32_t>(s_disc->current_level);
-    const int close = ta_close(&s.session, dest, current, current_listed());
-    s.steered = true;
-    s.steer = close;
+    const int close = ta_close(&s_state.session, dest, current, current_listed());
+    s_state.steered = true;
+    s_state.steer = close;
 
-    // Backed out: the map's close.
+    // A back-out takes the map's close, which resumes play in place.
     if (close == TA_CLOSE_BACK) {
         put<int32_t>(menu + TA_MENU_CLOSE, TA_CLOSE_TO_PLAY);
         trace(
@@ -278,10 +285,10 @@ void steer_close() {
         return;
     }
 
-    // The planet he is on: the game's travel to it.
+    // The planet being played, chosen: send ShipTravelTo down its travel branch.
     if (close == TA_CLOSE_RESTART) {
         put<int32_t>(target, TA_NO_PLANET);
-        s.restart = current;
+        s_state.restart = current;
         trace(
             "planet " + std::to_string(current)
             + " chosen, the one he is on: the game's travel to it"
@@ -296,43 +303,43 @@ void steer_close() {
     );
 }
 
-// on_pad: pad 0's report, before the game reads it.
+// Handles a pad report before the game reads it (on_pad).
 void pad(int port, std::uint8_t* report, int size) {
-    // The hero's pad, with its buttons.
+    // Only pad 0 drives the hero, and the report must hold the two button bytes.
     if (port != 0 || size < 2) {
         return;
     }
 
     const std::uint32_t held = ta_report_held(report);
-    const std::uint32_t pressed = held & ~s.pad_held;
-    s.pad_held = held;
+    const std::uint32_t pressed = held & ~s_state.pad_held;
+    s_state.pad_held = held;
 
-    // The mod's menu: the presses that can close it (the menu reads this report this tick).
-    if (s.session.open && game_mode() == 3) {
-        ta_session_press(&s.session, menu_page(), pressed);
+    // While the mod's menu is up, record the presses that can close it; the menu reads this report.
+    if (s_state.session.open && game_mode() == 3) {
+        ta_session_press(&s_state.session, menu_page(), pressed);
         steer_close();
     }
 
     set_restart_level();
 
-    // The combo's last button stays the mod's until it is let go: the game never sees it.
-    if (s.swallow) {
-        // Still held.
-        if (held & s_set.combo.press) {
-            ta_report_release(report, s_set.combo.press);
+    // Hide the combo's last button from the game until it is released.
+    if (s_state.swallow) {
+        // Clear it in the report while it is still held.
+        if (held & s_settings.combo.press) {
+            ta_report_release(report, s_settings.combo.press);
             return;
         }
 
-        s.swallow = false;
+        s_state.swallow = false;
     }
 
     const int level = level_loaded();
-    const bool combo = ta_combo_fires(s_set.combo, held, pressed);
+    const bool combo = ta_combo_fires(s_settings.combo, held, pressed);
 
-    // The trigger is the mod's only in a level's play: anywhere else the game keeps every button.
+    // The mod takes the trigger only in a level's play; elsewhere the game keeps every button.
     if (level < 0
         || !ta_combo_is_ours(level, get<int32_t>(level0(s_disc->level_exit)) != 0, game_mode())) {
-        // Said for a bug report.
+        // Log the ignored combo, for bug reports.
         if (combo) {
             trace(
                 "combo outside play (level " + std::to_string(level) + ", mode "
@@ -344,85 +351,87 @@ void pad(int port, std::uint8_t* report, int size) {
     }
 
     const bool key =
-        s_set.key != 0 && !s_mod->input().overlay() && s_mod->input().pressed(s_set.key);
+        s_settings.key != 0 && !s_mod->input().overlay() && s_mod->input().pressed(s_settings.key);
 
-    // Neither.
+    // Neither trigger fired.
     if (!combo && !key) {
         return;
     }
 
-    // The combo's last button: the game's map (Select) would open with it.
+    // Release the combo's last button, or the game's map (Select) would open too.
     if (combo) {
-        s.swallow = true;
-        ta_report_release(report, s_set.combo.press);
+        s_state.swallow = true;
+        ta_report_release(report, s_settings.combo.press);
     }
 
-    s.request = true;
+    s_state.request = true;
     trace(std::string(combo ? "combo" : "key") + " pressed in play");
 }
 
-// The mod's menu has gone: a level left, or play again with no menu coming back.
+// Forgets the mod's menu once it has gone: the level changed, or play is back with no menu waiting
+// to reopen.
 void end_session_if_over() {
-    // None open.
-    if (!s.session.open) {
+    // No menu of the mod's is open.
+    if (!s_state.session.open) {
         return;
     }
 
     const int level = level_loaded();
 
-    // Another level (the travel, a load): the menu went with the old one.
-    if (level != s.session.level) {
+    // A new level (a travel or a load) took the menu away with the old one.
+    if (level != s_state.session.level) {
         trace("menu over: the level changed");
-        s.session = ta_session{};
-        s.steered = false;
-        s.restart = -1;
+        s_state.session = ta_session{};
+        s_state.steered = false;
+        s_state.restart = -1;
         return;
     }
 
     const bool back =
         game_mode() == 0 && get<std::uint32_t>(exe(s_disc->menu) + TA_MENU_PENDING_PAGE) == 0;
 
-    // Play again, and no movie bringing the menu back.
+    // Play is back and no movie will reopen the menu.
     if (back) {
         trace(
-            s.steered && s.steer == TA_CLOSE_BACK ? "menu over: play goes on in place"
-                                                  : "menu over: play again"
+            s_state.steered && s_state.steer == TA_CLOSE_BACK ? "menu over: play goes on in place"
+                                                              : "menu over: play again"
         );
-        s.session = ta_session{};
-        s.steered = false;
-        s.restart = -1;
+        s_state.session = ta_session{};
+        s_state.steered = false;
+        s_state.restart = -1;
     }
 }
 
-// Opens the planet select as the ship's take-off opens it (update_resident_gameplay_state at the
-// take-off's end: PauseAllSounds, the menu in state 14), and the level loop's count of ticks in a
-// game mode starts again, as it does in the tick the mode changes (that tick has had its count).
+// Opens the planet select the way the end of the ship's take-off does
+// (update_resident_gameplay_state: PauseAllSounds with the menu in state 14). Also zeroes the level
+// loop's count of ticks in the game mode, as the loop does in the tick the mode changes; this tick
+// has already been counted.
 void open(const ta_play& p) {
     s_open_menu(TA_MENU_SHIP_ENTRY);
 
-    // PauseAllSounds did not open it (it only notes a pause the camera holds off).
+    // While the camera holds the pause off, PauseAllSounds only notes the pause and opens nothing.
     if (game_mode() != 3) {
         trace("PauseAllSounds left the game mode at " + std::to_string(game_mode()));
         return;
     }
 
     put<int32_t>(level0(s_disc->mode_ticks), 0);
-    s.session = ta_session{1, p.level, 0};
-    s.steered = false;
-    s.restart = -1;
+    s_state.session = ta_session{1, p.level, 0};
+    s_state.steered = false;
+    s_state.restart = -1;
 
-    // A refusal's notice from before goes.
-    if (s.notice_ticks > 0) {
+    // Clear the notice of an earlier refusal.
+    if (s_state.notice_ticks > 0) {
         notice("");
     }
 
     trace("planet select open on level " + std::to_string(p.level));
 }
 
-// on_frame: after each game tick.
+// Runs after each game tick (on_frame).
 void tick() {
-    // The notice's time.
-    if (s.notice_ticks > 0 && --s.notice_ticks == 0) {
+    // Clear the notice when its time is up.
+    if (s_state.notice_ticks > 0 && --s_state.notice_ticks == 0) {
         notice("");
     }
 
@@ -430,22 +439,22 @@ void tick() {
     end_session_if_over();
     steer_close();
 
-    // No trigger.
-    if (!s.request) {
+    // Nothing more to do unless the trigger fired.
+    if (!s_state.request) {
         return;
     }
 
-    s.request = false;
+    s_state.request = false;
     const ta_play p = read_play();
     const int why = ta_may_open(&p);
     trace(std::string("trigger: ") + ta_why_name(why) + " (" + describe(p) + ")");
 
-    // Refused: the game goes on, and the player is told why.
+    // When refused, the game goes on and a notice tells the player why.
     if (why != TA_OPEN) {
         notice(ta_why_text(why));
         trace(
-            std::string("notice ") + (s.notice_ticks > 0 ? "shown: " : "not shown (no notices): ")
-            + ta_why_text(why)
+            std::string("notice ")
+            + (s_state.notice_ticks > 0 ? "shown: " : "not shown (no notices): ") + ta_why_text(why)
         );
         return;
     }
@@ -453,31 +462,32 @@ void tick() {
     open(p);
 }
 
-// rac1.ship.travel_to: the planet select's close (update_pause_menu's restore, close request 2).
+// Replaces ShipTravelTo (rac1.ship.travel_to), which update_pause_menu's restore calls for close
+// request 2, the planet select's close.
 template <class Original>
 void travel_to(Original original, int32_t dest) {
-    // The ship's own menu: the game's.
-    if (!s.session.open) {
+    // A menu the ship opened is left to the game.
+    if (!s_state.session.open) {
         original(dest);
         return;
     }
 
     const int current = get<int32_t>(s_disc->current_level);
-    // A restart: the target steered to no planet. The planet he is on handed here instead (the steer
-    // missed, or a mod before this one changed the target) is the game's landing.
-    const bool restart = dest == TA_NO_PLANET && s.restart >= 0;
+    // A restart arrives as no planet, the target steer_close set. One that arrives as the planet
+    // being played (the steer missed, or an earlier mod changed the target) is the game's landing.
+    const bool restart = dest == TA_NO_PLANET && s_state.restart >= 0;
     const int close =
-        restart ? TA_CLOSE_RESTART : ta_close(&s.session, dest, current, current_listed());
-    s.session = ta_session{};
-    s.steered = false;
+        restart ? TA_CLOSE_RESTART : ta_close(&s_state.session, dest, current, current_listed());
+    s_state.session = ta_session{};
+    s_state.steered = false;
 
-    // Not the steered target: no load level to put back.
+    // Without a restart there is no load level to put back.
     if (!restart) {
-        s.restart = -1;
+        s_state.restart = -1;
     }
 
-    // A back-out the tick's end did not turn into the map's close: what that close does, by hand
-    // (update_pause_menu's last branch, play; close request 1, after which it unpauses the music).
+    // A back-out that steer_close missed: do what the map's close does (update_pause_menu's play
+    // branch). With close request 1, the restore then unpauses the music.
     if (close == TA_CLOSE_BACK) {
         put<int32_t>(level0(s_disc->mode), 0);
         put<int32_t>(exe(s_disc->menu) + TA_MENU_CLOSE, TA_CLOSE_TO_PLAY);
@@ -485,7 +495,7 @@ void travel_to(Original original, int32_t dest) {
         return;
     }
 
-    // The steered restart: the game's travel branch, for no planet, then its load level put back.
+    // A steered restart: run the game's travel branch for no planet, then put the load level back.
     if (restart) {
         trace(
             "ShipTravelTo(" + std::to_string(dest) + ") on planet " + std::to_string(current)
@@ -503,14 +513,14 @@ void travel_to(Original original, int32_t dest) {
     original(dest);
 }
 
-// The combo setting's choice.
+// Returns the TA_COMBO_* choice for the combo setting's value; an unknown value is the default.
 int combo_choice(const std::string& value) {
-    // L2 and R2.
+    // L2 and R2, then Select.
     if (value == "l2_r2_select") {
         return TA_COMBO_L2_R2_SELECT;
     }
 
-    // None: the key alone, if one is set.
+    // No combo: only the key opens the menu, if one is set.
     if (value == "off") {
         return TA_COMBO_OFF;
     }
@@ -523,77 +533,77 @@ int combo_choice(const std::string& value) {
 void load(openrac::Mod& mod) {
     s_mod = &mod;
 
-    // 1. The disc: its row, or a refusal. Never a guessed address.
+    // 1. The disc: find its row, or refuse. Never guess addresses.
     s_disc = nullptr;
 
-    // Each disc the mod has addresses for.
+    // Each row is a disc the mod has addresses for.
     for (const ta_disc& d : k_ta_discs) {
-        // The disc the port runs.
+        // The row for the disc the port runs.
         if (mod.version() == d.version) {
             s_disc = &d;
         }
     }
 
-    // A disc without a row.
+    // Refuse a disc with no row.
     if (s_disc == nullptr) {
         throw openrac::Error(
-            "rac1-travel-anywhere knows the PAL v2.00 and NTSC-U v1.00 discs, not "
+            "Travel anywhere only works with the PAL v2.00 and NTSC-U v1.00 discs, not "
             + std::string(mod.version())
         );
     }
 
-    // 2. The settings, once.
-    s_set = Settings{};
+    // 2. The settings, read once.
+    s_settings = Settings{};
     const std::string combo = mod.setting<std::string>("combo");
-    s_set.combo = ta_combo_of(combo_choice(combo));
+    s_settings.combo = ta_combo_of(combo_choice(combo));
     const std::string key = mod.setting<std::string>("key");
     const std::size_t comma = key.find(',');
-    s_set.key = openrac::bind_from_name(key.substr(0, comma));
+    s_settings.key = openrac::bind_from_name(key.substr(0, comma));
     const char* env = std::getenv("OPENRAC_TRAVEL_ANYWHERE_TRACE");
-    s_set.trace = mod.setting<bool>("trace") || (env != nullptr && std::strcmp(env, "1") == 0);
+    s_settings.trace = mod.setting<bool>("trace") || (env != nullptr && std::strcmp(env, "1") == 0);
     std::string missing;
 
-    // A key needs the port's keyboard (interface 1.2).
-    if (s_set.key != 0 && !mod.has_input()) {
-        s_set.key = 0;
-        missing = " (no key: this OpenRAC has no keyboard input for mods)";
+    // A key needs the port's keyboard input (interface 1.2); without it the key is dropped.
+    if (s_settings.key != 0 && !mod.has_input()) {
+        s_settings.key = 0;
+        missing = " (keyboard key ignored: this OpenRAC version can't give mods keyboard input)";
     }
 
-    // 3. Every piece of state the callbacks keep.
-    s = State{};
+    // 3. Reset every piece of state the callbacks keep (the load test loads the mod several times).
+    s_state = State{};
 
-    // No trigger at all: no callbacks, the game as it is.
-    if (s_set.combo.press == 0 && s_set.key == 0) {
-        mod.info("no trigger set (combo off, no key): nothing taken" + missing);
+    // With no trigger set, take nothing and leave the game as it is.
+    if (s_settings.combo.press == 0 && s_settings.key == 0) {
+        mod.info("inactive: Buttons is Off and no keyboard key is set" + missing);
         return;
     }
 
-    // 4. The game function: PauseAllSounds, the menu's open.
+    // 4. The game function it calls, PauseAllSounds, which opens the menu. Missing means refuse.
     s_open_menu = mod.required_function<OpenMenuFn>(s_disc->open_menu);
 
-    // 5. The hook point, then the pad and the tick.
-    mod.hook<hp::Ship_TravelTo>([](auto original, int32_t dest) { travel_to(original, dest); });
+    // 5. The hook point, then the pad and tick callbacks.
+    mod.hook<hooks::Ship_TravelTo>([](auto original, int32_t dest) { travel_to(original, dest); });
     mod.on_pad([](int port, std::uint8_t* report, int size) { pad(port, report, size); });
     mod.on_frame([] { tick(); });
 
-    // 6. One line saying how it will play.
+    // 6. One log line saying how it will play: the disc and the trigger.
     std::string trigger;
 
-    // The combo, if any.
-    if (s_set.combo.press != 0) {
-        trigger = s_set.combo.hold == (TA_PAD_L2 | TA_PAD_R2) ? "L2 + R2, then Select"
-                                                              : "L1 + R1, then Select";
+    // Name the combo, if one is set.
+    if (s_settings.combo.press != 0) {
+        trigger = s_settings.combo.hold == (TA_PAD_L2 | TA_PAD_R2) ? "L2 + R2 + Select"
+                                                                   : "L1 + R1 + Select";
     }
 
-    // The key, if any.
-    if (s_set.key != 0) {
+    // Name the key, if one is set.
+    if (s_settings.key != 0) {
         trigger += std::string(trigger.empty() ? "" : " or ") + "the key "
-                   + std::string(openrac::bind_name(s_set.key));
+                   + std::string(openrac::bind_name(s_settings.key));
     }
 
     mod.info(
-        "on the " + std::string(mod.version()) + " disc: the planet select opens with " + trigger
-        + (s_set.trace ? ", trace on" : "") + missing
+        "on the " + std::string(mod.version()) + " disc, " + trigger + " opens the planet select"
+        + (s_settings.trace ? " (trace on)" : "") + missing
     );
 }
 

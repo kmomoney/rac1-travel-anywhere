@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The entry point (GUIDE.md section 4): the game that loads the library picks its part. Only
+// The entry point (GUIDE.md section 4): it hands the load to the part for the running game. Only
 // Ratchet & Clank (rac1) has one, src/rac1/game.cpp; any other game is refused with a reason.
 #include "openrac/mod.hpp"
 
@@ -11,16 +11,17 @@
 
 namespace {
 
-// Called once by the port at start, on the game's thread: rac1's part, or a refusal.
+// Loads rac1's part, or refuses any other game. Called once by the port at start, on the game's
+// thread.
 void load(openrac::Mod& mod) {
-    // Ratchet & Clank: its own addresses, hooks and decisions.
+    // Ratchet & Clank is the only game with a part.
     if (mod.game() == "rac1") {
         travel_anywhere::rac1::load(mod);
         return;
     }
 
     throw openrac::Error(
-        "rac1-travel-anywhere is for Ratchet & Clank (rac1), not " + std::string(mod.game())
+        "Travel anywhere only works with Ratchet & Clank (rac1), not " + std::string(mod.game())
     );
 }
 

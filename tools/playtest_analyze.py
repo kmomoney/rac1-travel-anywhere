@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The play-test runs (tools/playtest.sh) read back from the port's per-tick trace (OPENRAC_TRACE).
+"""Reads play-test runs (tools/playtest.sh) back from the port's per-tick trace (OPENRAC_TRACE).
 
     python3 tools/playtest_analyze.py --modes RUN.jsonl
     python3 tools/playtest_analyze.py --around RUN.jsonl
@@ -14,12 +14,12 @@ frames from control (c), the hero's state (hs) and position (hp), and the run's 
 --around compares, for each menu (a stretch of game mode 3) that play follows in the same level,
 the last tick of play before it with the first after it: the hero's position, rotation and state,
 the camera's position, and its forward from the second tick after (the first still has the menu's
-basis, as after any menu of the game's, until the camera's next update). "same" is equal to the
-trace's four decimals.
+basis, as after any of the game's menus, until the camera's next update). "same" means equal to
+the trace's four decimals.
 
 --same counts the ticks from control where two runs differ in the level, the game mode, the hero's
-position, rotation or state, or the camera, and shows the first: the mod's runs without its trigger
-against runs without the mod.
+position, rotation or state, or the camera, and shows the first. It compares runs of the mod with no
+trigger pressed against runs without the mod.
 
 --mobys reads the port's moby log (OPENRAC_MOBY_LOG=N:RADIUS, in the run's log) and counts, at each
 FRAME it logged, the mobys of CLASS within RADIUS of (X, Y, Z): crates (500) or loose bolts (13)

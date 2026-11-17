@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Contact sheets of a play-test run's pictures (tools/playtest_matrix.sh, OPENRAC_SHOT).
+"""Makes contact sheets of a play-test run's pictures (tools/playtest_matrix.sh, OPENRAC_SHOT).
 
     python3 tools/playtest_sheet.py OUT/shots OUT/sheets
 
 For each run whose frames are in OUT/shots (NAME_<frame>.png), one sheet OUT/sheets/NAME.png: the
 frames in order, four to a row, each 400 by 300 with its file name on it. Needs Pillow; without it,
-says so and makes none.
+it says so and makes none.
 """
 import re
 import sys

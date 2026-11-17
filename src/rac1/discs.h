@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
- * What the mod uses of the game, on each disc it knows: the globals it reads and writes and the
- * game function it calls, by the name each disc's build of the port gives it (openrac_api.function).
- * - PAL v2.00 (SCES-50916, "pal"): rac1-decomp's own addresses and names (include/names/,
- *   config/names.tsv); OpenRAC's PAL build names functions as rac1-decomp does.
+ * What the mod uses of the game on each disc it knows: the globals it reads and writes, and the
+ * game function it calls by the name each disc's build of the port gives it (openrac_api.function).
+ * - PAL v2.00 (SCES-50916, "pal"): rac1-decomp's addresses and names (include/names/,
+ *   config/names.tsv). OpenRAC's PAL build names functions as rac1-decomp does.
  * - NTSC-U v1.00 (SCUS-97199, "ntsc"): the same globals and function at the US addresses, from the
- *   NTSC decomp (OpenRAC's games/rac1/ntsc-decomp) and the C OpenRAC's NTSC build generates from it
- *   (port/build/release/games/rac1-ntsc/gen), which spells each global as the game reads it.
- * DESIGN.md, section 5, has the evidence for each row.
+ *   NTSC decomp (OpenRAC's games/rac1/ntsc-decomp) and the C OpenRAC's NTSC build generates from
+ *   it (port/build/release/games/rac1-ntsc/gen), which spells each global as the game reads it.
+ * DESIGN.md section 5 has the evidence for each row.
  */
 #ifndef RAC1_TRAVEL_ANYWHERE_DISCS_H
 #define RAC1_TRAVEL_ANYWHERE_DISCS_H
@@ -17,34 +17,34 @@
 typedef struct ta_disc {
     const char* version; /* openrac_api.version */
 
-    /* The executable's, used as they are (below 0x15F000: no level program moves them). */
+    /* Executable globals, used as they are: no level program moves anything below 0x15F000. */
     uint32_t hero; /* g_hero */
     uint32_t ship; /* the ship's record (level_render_state): +0 its moby, +0x20 its state */
     uint32_t current_level; /* g_current_level_index */
-    uint32_t freeze_flags;  /* mode_freeze_flags: a dialog the level loop opens next */
-    uint32_t freeze_mask;   /* the bits of it handle_pause_input opens a dialog for */
+    uint32_t freeze_flags;  /* mode_freeze_flags: the dialogs the level loop opens next */
+    uint32_t freeze_mask;   /* the bits of it that handle_pause_input opens a dialog for */
     uint32_t card;          /* memory_card_state */
-    uint32_t card_state;    /* its operation: 3 and over busy */
-    uint32_t card_pending;  /* its queued operation: under 0 none */
-    uint32_t galaxy_list;   /* gGalaxyList: s32[20], the planets the ship lists, 0 ending them */
+    uint32_t card_state;    /* offset of its current operation: busy at 3 and over */
+    uint32_t card_pending;  /* offset of its queued operation: none when under 0 */
+    uint32_t galaxy_list;   /* gGalaxyList: s32[20], the planets the ship lists, ended by a 0 */
 
-    /* The executable's, through relocate_data (a level program has its own copy). */
+    /* Executable globals, read through relocate_data (a level program has its own copy). */
     uint32_t menu;            /* menu_system: +0 state, +8 next page, +0xC close request, ... */
-    uint32_t camera_suppress; /* camera_position_publication_suppressed: PauseAllSounds bails */
+    uint32_t camera_suppress; /* camera_position_publication_suppressed: no menu opens while set */
 
-    /* Level 0's program's, through relocate_level_data(0, ...). */
-    uint32_t mode;         /* the level loop's game mode (cinematic_mode): 0 play */
+    /* Globals of level 0's program, read through relocate_level_data(0, ...). */
+    uint32_t mode;         /* the level loop's game mode (cinematic_mode): 0 in play */
     uint32_t mode_ticks;   /* ticks in that mode (cinematic_mode_frames) */
-    uint32_t level_exit;   /* nonzero: the level loop ends (a travel on its way) */
-    uint32_t ship_request; /* ship_level_exit_requested: Triangle at the ship, its take-off next */
+    uint32_t level_exit;   /* nonzero while the level loop is ending (a travel on its way) */
+    uint32_t ship_request; /* ship_level_exit_requested: Triangle at the ship, take-off next */
     uint32_t debug;        /* the debug menu's record: +8 its update flags, +0xEC its step count */
-    uint32_t menu_target;  /* the menu's transition_target_level: the planet its cursor is on, the
-                            * one update_pause_menu's restore hands ShipTravelTo */
-    uint32_t load_level;   /* the level the level loop's end flies to: ShipTravelTo's travel branch
-                            * sets it (the executable's 0x0015F6E4 in level 0's program) */
+    uint32_t menu_target;  /* the menu's transition_target_level: the planet under its cursor,
+                            * which update_pause_menu's restore passes to ShipTravelTo */
+    uint32_t load_level;   /* the level the loop flies to when it ends, set by ShipTravelTo's travel
+                            * branch; on PAL, level 0's copy of the executable's 0x0015F6E4 */
 
     /* The game function it calls. */
-    const char* open_menu; /* void (int state): PauseAllSounds, the menu opened in that state */
+    const char* open_menu; /* void (int state): PauseAllSounds, which opens the menu in `state` */
 } ta_disc;
 
 static const ta_disc k_ta_discs[] = {
@@ -56,8 +56,8 @@ static const ta_disc k_ta_discs[] = {
         0x0015EFB4u, /* mode_freeze_flags */
         0x00000401u, /* handle_pause_input: mode_freeze_flags & 0x401 */
         0x0013D390u, /* memory_card_state */
-        0xDCu,       /* its +0xDC, which the PAL pause and map want under 3 */
-        0xE4u,       /* its +0xE4, which they want under 0 */
+        0xDCu,       /* +0xDC: the PAL pause and map want it under 3 */
+        0xE4u,       /* +0xE4: and this under 0 */
         0x0013D618u, /* gGalaxyList */
         0x001D5F70u, /* menu_system */
         0x0018C42Cu, /* camera_position_publication_suppressed */

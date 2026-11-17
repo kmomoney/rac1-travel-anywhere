@@ -1,28 +1,29 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# One scripted play-test run of the mod in OpenRAC's rac1 port, hidden and silent: the port's own
-# development switches (OpenRAC docs/port/RAC1_PAL_TESTING.md, DEBUGGING.md, REGRESSION.md) start a
-# level, press the pad on a schedule counted from control, write game memory (OPENRAC_WRITE: a
-# planet unlocked, the hero's health) and write one JSON line a tick (OPENRAC_TRACE: the game mode
-# m, the hero's position hp, rotation hr, state hs, the camera's position cam and forward fw).
-# PLAYTEST.md has the routes and what each run showed.
+# Runs one scripted play-test of the mod in OpenRAC's rac1 port, with the window hidden and no
+# sound. The port's development switches (OpenRAC docs/port/RAC1_PAL_TESTING.md, DEBUGGING.md,
+# REGRESSION.md) start a level, press the pad on a schedule counted from control, write game memory
+# (OPENRAC_WRITE: a planet unlocked, the hero's health) and write one JSON line per tick
+# (OPENRAC_TRACE: the game mode m, the hero's position hp, rotation hr and state hs, the camera's
+# position cam and forward vector fw). PLAYTEST.md lists the routes and what each run showed.
 #
 #   tools/playtest.sh OUT NAME LEVEL SETTINGS [VAR=VALUE...]
 #
-# OUT       a scratch folder (made): the run's NAME.jsonl, NAME.log and its plugins list
+# OUT       a scratch folder, created if needed, for the run's NAME.jsonl, NAME.log and plugins list
 # SETTINGS  none (no mods), or the mod's settings as JSON: '{"combo": "l1_r1_select", ...}'
-# VAR=VALUE more of the port's switches (OPENRAC_WRITE=..., OPENRAC_SHOT=..., ...), and ROUTE=
-#           (OPENRAC_PRESS entries after the level's start) and CF= (frames after control) to
-#           replace the standard route
+# VAR=VALUE more of the port's switches (OPENRAC_WRITE=..., OPENRAC_SHOT=..., ...); ROUTE=
+#           (OPENRAC_PRESS entries after the level starts) and CF= (frames after control) replace
+#           the standard route
 #
-# The port and its data: DISC (ntsc, the default, or pal: the program openrac-rac1-DISC), OPENRAC (an
-# OpenRAC checkout with port/build/release built, default ../OpenRAC), DATA (the disc's data folder as
-# the launcher or tools/extractor.py writes it, default ~/OpenRAC/active/rac1/data), PACKAGE (the
-# mod's package folder to run, default this checkout's build/package/rac1_travel_anywhere). LEVELS
-# (an export of the levels, OpenRAC's assets/port/rac1/ntsc) makes the port draw the world, for
-# OPENRAC_SHOT pictures. START (default "100:4000:5,k30:8:3": Cross at the title, then Start every
-# 30 frames to skip what plays until control) replaces the presses before control.
+# The environment picks the port and its data: DISC (ntsc, the default, or pal; runs
+# openrac-rac1-DISC), OPENRAC (an OpenRAC checkout with port/build/release built, default
+# ../OpenRAC), DATA (the disc's data folder as the launcher or tools/extractor.py writes it, default
+# ~/OpenRAC/active/rac1/data), PACKAGE (the mod package folder to run, default this checkout's
+# build/package/rac1_travel_anywhere). LEVELS (an export of the levels, OpenRAC's
+# assets/port/rac1/ntsc) makes the port draw the world, for OPENRAC_SHOT pictures. START (default
+# "100:4000:5,k30:8:3": Cross at the title, then Start every 30 frames to skip anything that plays
+# before control) replaces the presses before control.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -42,7 +43,7 @@ shift 4
 ROUTE="c60:C00:20,c80:C01:5,c85:C00:5,c300:1000:5"
 CF=500
 
-# The route and its length from the arguments.
+# Take the route and its length from the arguments.
 for kv in "$@"; do
     case $kv in
         ROUTE=*) ROUTE=${kv#ROUTE=} ;;
@@ -53,7 +54,7 @@ done
 mkdir -p "$OUT"
 MODS=(--no-mods)
 
-# The mod from this checkout's build, listed with the settings asked for.
+# Run the mod from this checkout's build, with the settings given.
 if [ "$SETTINGS" != none ]; then
     mkdir -p "$OUT/plugins-$NAME"
     ln -sfn "${PACKAGE:-$HERE/build/package/rac1_travel_anywhere}" "$OUT/plugins-$NAME/rac1-travel-anywhere"
@@ -67,7 +68,7 @@ if [ -n "${LEVELS:-}" ]; then
     EXTRA=(--levels "$LEVELS")
 fi
 
-# The switches of the port's own: the ones given, then the route's.
+# Pass the other VAR=VALUE arguments to the port, before the route's switches.
 VARS=()
 for kv in "$@"; do
     case $kv in

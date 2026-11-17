@@ -1,116 +1,117 @@
 # Travel anywhere
 
-Opens the ship's planet select, the **Galactic Map** Ratchet gets at his ship, from anywhere you
-play in the first Ratchet & Clank on [OpenRAC](https://github.com/OpenRAC/OpenRAC)'s native port.
-Hold **L1 and R1** and press **Select**.
+Open the ship's planet select from anywhere in the first Ratchet & Clank, on
+[OpenRAC](https://github.com/OpenRAC/OpenRAC)'s native port. Hold **L1 + R1** and press
+**Select** to get the game's own Galactic Map, the same menu as at Ratchet's ship. Pick a planet
+and the ship flies you there, or back out and carry on right where you were.
 
-It is the game's own menu: it lists the planets the ship would list (the ones the story has
-unlocked, in the order you found them), shows each one's missions and gold bolts, and plays its
-infobot. What you choose does what it does at the ship:
+## Install
 
-- **another planet** (Cross, then *Blast Off*): the game saves to the memory card, the ship leaves
-  its pad, flies there and lands, exactly as when you leave from the ship;
-- **back out** (Triangle, Start or Select on the planet list, or the combo again): the menu closes
-  and you are where you were, as you were: the same spot, the same move (mid-jump stays mid-jump),
-  the same camera. Your ship does not land and you are not moved to it;
-- **the planet you are on** (Cross on it, then *Blast Off*): a trip there like any other: the game
-  saves to the memory card, the ship leaves its pad, flies, and lands, and you start the level from
-  its beginning, as when you arrive on a planet. It resets what an arrival resets: the level is
-  placed anew (its loose bolts are back, for one), except what the game records as done (broken
-  crates stay broken, and so do the kills and story steps it keeps), and everything you carry
-  (bolts, items, planets) stays.
+In the OpenRAC launcher, open **Mods**, choose **Add from a link** and paste:
 
-How the game's menu works and how the mod opens it, with the evidence from the decompilations:
-[DESIGN.md](DESIGN.md). The plan and where it stands: [PLAN.md](PLAN.md). How it was play-tested:
-[PLAYTEST.md](PLAYTEST.md).
+```
+https://github.com/kmomoney/rac1-travel-anywhere
+```
 
-**Discs:** Ratchet & Clank PAL v2.00 (SCES-50916) and NTSC-U v1.00 (SCUS-97199), the two the other
-mods for the first game support. Others are refused, with a reason, in the launcher.
+It works with the **PAL v2.00** (SCES-50916) and **NTSC-U v1.00** (SCUS-97199) discs. With any
+other disc, the launcher says why it won't load.
+
+## What it does
+
+The menu lists the planets the story has unlocked, with each one's missions and gold bolts, and
+plays their infobots, exactly as at the ship. What you choose decides what happens:
+
+| You choose | What happens |
+|---|---|
+| **Another planet** (Cross, then *Blast Off*) | The same trip as from the ship: the game saves to your memory card, the ship takes off and flies you there. |
+| **Back out** (Triangle, Start, Select or the combo again) | The menu closes and you carry on exactly where you were, even mid-jump. The ship doesn't land and you aren't moved. |
+| **The planet you're on** (Cross, then *Blast Off*) | A full trip back to the same planet, with the save, the flight and the landing. The level restarts from its beginning. |
+
+Restarting resets the level the same way arriving from another planet does. Loose bolts are back,
+but anything the game records as done stays done (broken crates stay broken). You keep everything
+you carry: bolts, weapons, gadgets and unlocked planets.
 
 ## Controls
 
-| | |
+| Button | What it does |
 |---|---|
-| **L1 + R1, then Select** | Opens the planet select (setting *Buttons*). Hold both shoulder buttons first, then press Select. |
-| Select alone | The game's map, as ever. |
-| L1, R1 | Look and crouch, as ever, also while you hold them for the combo. |
-| In the menu | The game's buttons: Up and Down choose a planet, Cross goes to its page, Cross again blasts off, Circle plays its infobot, Triangle goes back or closes the menu. On the planet list Select, Start and the combo close it too. |
-| A key | Optional (setting *Keyboard key*). With the keyboard the combo is Shift + Q + Backspace on the port's default keys. |
+| **L1 + R1 + Select** | Opens the planet select. Hold L1 and R1, then press Select. Change it with the *Buttons* setting. |
+| Select alone | Opens the map, as usual. |
+| L1, R1 | Look and crouch, as usual, even while you hold them for the combo. |
+| In the menu | Up and Down pick a planet. Cross opens its page, and Cross again is *Blast Off*. Circle plays its infobot. Triangle goes back, or closes the menu from the planet list. |
+| Keyboard | With OpenRAC's default keys, the combo is Left Shift + Q + Backspace. You can also set a single key with the *Keyboard key* setting. |
 
-The combo's Select is the mod's: the game never sees it, so it opens the planet select instead of
-the map. Outside play (in a menu, a cutscene, while a planet loads) the mod leaves every button to
-the game, so the combo is just L1, R1 and Select there; in the planet select itself that Select
-closes it.
+The combo only works in normal play. In menus, cutscenes and loading screens, the buttons do what
+they always do. In play, the game never sees the combo's Select, so the map doesn't open with it.
 
-## Where it does not open
+## When it won't open
 
-In play it opens almost anywhere: standing, running, mid-jump, swimming, grinding, hanging from a
-ledge; boss fights are not refused either. Where it would break the game, or where the game itself
-would not let you fly, it stays shut and a line at the top of the picture says why:
+It opens almost anywhere in play, mid-jump included. Swimming, grinding, hanging from a ledge and
+boss fights aren't blocked either. It stays shut at moments where travelling could break the game,
+or where the game itself wouldn't let you fly, and a message at the top of the screen says why.
 
-| Where | The line | Why |
-|---|---|---|
-| A cutscene, a movie, the ship's own landing, take-off or flight, a menu, a dialog, a vendor, a planet loading | (nothing: the buttons are the game's there) | Not play |
-| The first moments after any of those | *not yet* | The game's own pause waits as long (8 ticks) |
-| Ratchet dying, drowning, falling off the world or respawning | *not while Ratchet is down* | The game puts him back at a checkpoint next |
-| Clank on his own (Orxon's start, ...) | *Clank cannot fly the ship* | The game never lets Clank fly: at the ship he gets a scene instead |
-| Giant Clank | *not as Giant Clank* | His Start opens his own screen |
-| The hoverboard, a vehicle, a turret, the ship-flying sections | *not while riding* | The game's map is shut there too |
-| A planet whose ship you cannot board yet (Novalis, before its dropship scene), or with no ship | *the ship is not here* | The game's own rule: the ship ignores you while the story hides it |
-| Orxon's story scenes at the ship, a take-off already on its way | *the ship is busy* | The game is about to fly it itself |
-| A weapon change, an item's cancellation, a dialog about to open, the game's menu about to reopen | *not now* | Moments the game's own pause and map wait out |
-| The memory card saving or loading | *not while the memory card is busy* | The travel saves to it |
-| The debug menu stepping the game a tick at a time | *not while the debug menu steps* | The game's map waits too |
+| When | Why |
+|---|---|
+| A cutscene, a menu, a dialog, a vendor, loading, or the ship's own take-off, flight or landing | Not normal play: the buttons work as usual and no message shows. |
+| A split second after any of those, during a weapon switch, or just before a dialog opens | The game's own pause menu waits too. Try again a moment later. |
+| Ratchet dying, drowning, falling off the world or respawning | He's about to go back to a checkpoint. |
+| Playing as Clank or Giant Clank | Clank can't fly the ship, and Giant Clank has his own screen. |
+| Riding the hoverboard, a vehicle or a turret, or flying the ship | The game's map is off there too. |
+| No ship to board: a planet without one, or one the story keeps hidden (Novalis before the dropship scene) | The trip needs the ship. |
+| The ship about to take off (Orxon's scenes at the ship, or a take-off you already started) | The game is already sending it off. |
+| The memory card saving or loading | The trip saves to it. |
+| The debug menu stepping frames | The game's map waits too. |
 
-The line shows for about two and a half seconds on a port of mod interface 1.9 or later (an older
-port shows none; the menu stays shut all the same).
+Older OpenRAC versions show no message, but the menu still stays shut.
 
 ## Settings
 
-| Setting | Default | |
+Change these in the launcher. They take effect the next time you start the game.
+
+| Setting | Default | What it does |
 |---|---|---|
-| **Buttons** | L1 + R1, then Select | Or L2 + R2, then Select; or *Off* (the key alone, if one is set). Each player's own in a party. |
-| **Keyboard key** | none | A key that opens it too. Pick one the game's controls do not use (the port's defaults use WASD, IJKL, Space, E, F, R, Q, Shift, 1, 3, C, V, Enter, Backspace and the arrows). |
-| **Trace** | off | For bug reports: a line in the game's log at each press of the buttons with what the mod decided and everything it read to decide it, and at each step of its menu. Also `OPENRAC_TRAVEL_ANYWHERE_TRACE=1`. |
+| **Buttons** | L1 + R1 + Select | Or L2 + R2 + Select, or *Off* to use only the keyboard key. In a party, each player picks their own. |
+| **Keyboard key** | None | A key that also opens the planet select. Pick one the game's controls don't use. The defaults use WASD, IJKL, Space, E, F, R, Q, Left Shift, 1, 3, C, V, Enter, Backspace and the arrow keys. |
+| **Trace** | Off | For bug reports. Writes what the mod sees and decides to the game's log. |
 
 ## Other mods
 
-- **fast-travel** and **better-pause-menu** (QoL Hub): both travel to unlocked planets from the
-  pause menu through OpenRAC's own travel call (`play_travel`, what the pause menu's Quit Game
-  does with a planet in place of the title): the level ends and the game flies to the planet, with
-  no save to the card and no ship leaving its pad. This mod opens the game's own Galactic Map
-  instead, with the ship's save, flight and landing. They take no hook point of this mod's and none
-  of its buttons, so they work together: use whichever you like for a trip. Their pages live in the
-  pause menu, which the combo does not open over, and the planet select has no way into theirs.
-- **debug-menu**: opens the game's debug menu on R3, which the combo does not use. While its menu
-  is open, or while it steps the game a tick at a time, the planet select does not open.
-- **multiplayer**: in a party only the host's ship takes the party to another planet (its rule): a
-  member who picks another planet here lands its ship again where it stands. Backing out is never
-  seen as a travel. Not play-tested in a party. On PAL, OpenRAC's port today calls the game's ship
-  travel past the hook point both mods take (DESIGN.md section 2): this mod does not need it, the
-  multiplayer mod's travel rule does.
-- **rac1-enhanced-movement** (strafe on L2 or R2) and **lock-strafe**: the default combo holds L1
-  and R1, which they leave as look and crouch. With *Buttons* on L2 + R2, holding them strafes
-  first, which is harmless.
-- **keyboard-mouse**, **button-swap**: the mod loads after them, so the combo is read on the buttons
-  they press or swap.
+No conflicts are declared with any of these.
 
-No conflict is declared with any of them.
+- **fast-travel** and **better-pause-menu**: both travel from the pause menu. This mod opens the
+  ship's own menu instead, with the ship's usual save, flight and landing. Use whichever you like.
+- **debug-menu**: it uses R3, which the combo doesn't. The planet select won't open while the
+  debug menu is open or stepping frames.
+- **multiplayer**: in a party, the multiplayer mod lets only the host's trips move the party. Not
+  yet tested together. On the PAL disc, OpenRAC currently skips the multiplayer mod's ship rule,
+  for this menu and at the ship alike ([DESIGN.md](DESIGN.md), section 2).
+- **rac1-enhanced-movement** and **lock-strafe**: they strafe on L2 or R2. The default combo uses
+  L1 + R1, so they don't clash. If you set *Buttons* to L2 + R2, Ratchet also strafes while you
+  hold them.
+- **keyboard-mouse** and **button-swap**: this mod loads after them, so the combo follows the
+  buttons they press or swap.
 
 ## Known limits
 
-- The take-off is not played: the menu opens over the level where you stand. After *Blast Off* the
-  picture cuts to the parked ship leaving its pad; Ratchet is not seen boarding.
-- Choosing the planet you are on is a whole trip, about half a minute (the flight out, the flight,
-  the load, the landing), as for any planet.
-- On Veldin the list holds only the planets the story has added (none in a new game's first
-  minutes) and never Veldin itself, which the ship cannot fly to: there *Blast Off* on Veldin lands
-  the ship again and play goes on where you stood (the game's landing, as in 0.1.0).
-- Every scripted play-test started a level directly (OpenRAC's `--level`), with planets unlocked by
-  writing the game's planet list; nothing was played from a memory card save, in a party, or on a
-  boss fight (PLAYTEST.md).
+- The take-off isn't shown. After *Blast Off*, the view cuts to the parked ship leaving its pad,
+  and you don't see Ratchet board.
+- Restarting the level takes a full trip, about half a minute, as flying to any planet does.
+- On Veldin at the start of the game, the list only has the planets you've unlocked (none at
+  first), and never Veldin itself, because the ship can't fly there. *Blast Off* on Veldin lands
+  the ship again and you carry on where you stood.
+- It has only been tested by script, each run starting a level directly. It hasn't been tested
+  from a memory card save, in a party or in a boss fight. See [PLAYTEST.md](PLAYTEST.md).
 
-## Building
+## Release notes
+
+- **0.1.1**: Choosing the planet you're on now restarts the level with a full trip there. It used
+  to land the ship and leave you where you stood (Veldin still does).
+- **0.1.0**: First release, for the PAL v2.00 and NTSC-U v1.00 discs.
+
+## For developers
+
+How the game's menu works and how the mod opens it: [DESIGN.md](DESIGN.md). The plan:
+[PLAN.md](PLAN.md). How it was tested: [PLAYTEST.md](PLAYTEST.md).
 
 ```sh
 python3 tools/fetch_sdk.py                 # the SDK sdk.lock pins, into .sdk/
@@ -123,18 +124,8 @@ python3 .sdk/openrac-mod-sdk-*/tools/package_mod.py build/package/rac1_travel_an
 ```
 
 To try a build, add `build/package/rac1_travel_anywhere` in the launcher's **Mods** tab.
-`tools/playtest.sh` plays a scripted route in OpenRAC's port, hidden, and
-`tools/playtest_analyze.py` reads its trace back (PLAYTEST.md).
+`OPENRAC_TRAVEL_ANYWHERE_TRACE=1` turns the trace on without the setting. `tools/playtest.sh` plays
+a scripted route in OpenRAC's port, hidden, and `tools/playtest_analyze.py` reads its trace back.
 
-## Notes
-
-- **0.1.1**: choosing the planet you are on (*Blast Off* on it) now starts the level from its
-  beginning, through the game's own trip there (the save, the flight, the landing), as arriving
-  from another planet does. 0.1.0 landed the ship again and left you where you stood. Backing out
-  is unchanged: you stay where you were. Veldin's first visit, which the ship cannot fly to, keeps
-  the landing. Play-tested on both discs (PLAYTEST.md).
-- **0.1.0**: the first version, PAL v2.00 and NTSC-U v1.00, play-tested by script on both
-  (PLAYTEST.md).
-
-Nothing from the game's discs is in this repository: only addresses, offsets and numbers worked out
-from the decompilations. GPL-3.0-or-later.
+No game data is in this repository: only addresses, offsets and numbers worked out from the
+decompilations. License: GPL-3.0-or-later.

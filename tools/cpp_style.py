@@ -36,8 +36,8 @@ from typing import List, Optional, Sequence, Tuple
 ROOT = Path(__file__).resolve().parent.parent
 STYLE = ROOT / ".clang-format"
 
-# The folders (relative to the repository root) whose C and C++ this tool covers. Copied from
-# openrac-mods/tools/cpp_style.py (its rules unchanged) for this repository of one mod.
+# The folders (relative to the repository root) whose C and C++ this tool covers. This repository
+# holds one mod; the rest is openrac-mods/tools/cpp_style.py, unchanged.
 TREES = (
     "src",
     "tests",

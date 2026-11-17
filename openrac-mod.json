@@ -4,7 +4,7 @@
   "name": "Travel anywhere",
   "version": "0.1.1",
   "author": "kmomoney",
-  "description": "Opens the ship's own planet select from anywhere you play: hold L1 and R1 and press Select. It lists the planets the ship would, and picking one flies there as the ship does (the save, the flight, the landing). Backing out puts you back where you were, as you were; picking the planet you are on flies there as to any other planet, so the level starts again from its beginning. It does not open in cutscenes, menus, the ship's own flight, as Clank or Giant Clank, while riding, while Ratchet is down, or on a planet with no ship; a line at the top of the picture says why.",
+  "description": "Open the ship's planet select from anywhere: hold L1 + R1 and press Select. Pick a planet and the ship flies you there as usual. Back out and you carry on right where you were. Pick the planet you're on to restart its level from the beginning, keeping your bolts and items. It won't open at a few unsafe moments, such as while riding, playing as Clank or respawning; a message says why.",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/kmomoney/rac1-travel-anywhere",
   "api": "1.2",
@@ -34,18 +34,18 @@
       "choices": [
         {
           "value": "l1_r1_select",
-          "name": "L1 + R1, then Select"
+          "name": "L1 + R1 + Select"
         },
         {
           "value": "l2_r2_select",
-          "name": "L2 + R2, then Select"
+          "name": "L2 + R2 + Select"
         },
         {
           "value": "off",
           "name": "Off"
         }
       ],
-      "description": "Hold the two shoulder buttons and press Select to open the planet select. Select alone still opens the map; the shoulder buttons still look and crouch while you hold them."
+      "description": "Hold the two shoulder buttons and press Select to open the planet select. Select alone still opens the map; Off leaves only the keyboard key."
     },
     {
       "key": "key",
@@ -54,7 +54,7 @@
       "type": "keybind",
       "binds": 1,
       "default": "",
-      "description": "A key that opens it too. None by default; pick one the game's controls do not use."
+      "description": "A key that also opens the planet select. Pick one the game's controls don't use."
     },
     {
       "key": "trace",
@@ -62,7 +62,7 @@
       "name": "Trace",
       "type": "bool",
       "default": false,
-      "description": "For bug reports: a line in the game's log at each press of the buttons, saying what the mod decided and everything it read to decide it, and at each step of its menu."
+      "description": "For bug reports. Writes what the mod sees and decides to the game's log."
     }
   ]
 }
