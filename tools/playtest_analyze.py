@@ -5,6 +5,7 @@
     python3 tools/playtest_analyze.py --modes RUN.jsonl
     python3 tools/playtest_analyze.py --around RUN.jsonl
     python3 tools/playtest_analyze.py --same A.jsonl B.jsonl
+    python3 tools/playtest_analyze.py --mobys RUN.log CLASS X Y Z RADIUS FRAME [FRAME ...]
 
 --modes lists each change of the level (lv) and its game mode (m: 0 play, 1 a movie, 2 a cutscene,
 3 a menu, 4 a dialog, 5 a vendor, 6 the ship's landing, take-off or flight), with the frame (f), the
@@ -19,8 +20,15 @@ trace's four decimals.
 --same counts the ticks from control where two runs differ in the level, the game mode, the hero's
 position, rotation or state, or the camera, and shows the first: the mod's runs without its trigger
 against runs without the mod.
+
+--mobys reads the port's moby log (OPENRAC_MOBY_LOG=N:RADIUS, in the run's log) and counts, at each
+FRAME it logged, the mobys of CLASS within RADIUS of (X, Y, Z): crates (500) or loose bolts (13)
+still there before and after a level loads again. FRAME may be `first` (the first frame logged at or
+after control) or `last` (the run's last).
 """
 import json
+import math
+import re
 import sys
 
 
@@ -92,6 +100,33 @@ def same(path_a, path_b):
                 print(f"  {k}: {a[c].get(k)}  vs  {b[c].get(k)}")
 
 
+def mobys(path, cls, x, y, z, radius, frames):
+    seen = {}
+    control = 0
+    for line in open(path):
+        c = re.search(r"control at frame (\d+)", line)
+        if c and not control:
+            control = int(c.group(1))
+        m = re.match(r"\[info\] moby (\d+) class (\d+) at \S+ state \d+ .* pos (\S+) (\S+) (\S+)", line)
+        if m and int(m.group(2)) == cls:
+            px, py, pz = (float(m.group(i)) for i in (3, 4, 5))
+            near = math.dist((px, py, pz), (x, y, z)) <= radius
+            seen.setdefault(int(m.group(1)), []).append((px, py, pz) if near else None)
+    logged = sorted(seen)
+    for f in frames:
+        if f == "first":
+            f = next((g for g in logged if g >= control), None)
+        elif f == "last":
+            f = logged[-1] if logged else None
+        else:
+            f = int(f)
+        if f not in seen:
+            print(f"f {f}: not logged")
+            continue
+        here = [p for p in seen[f] if p is not None]
+        print(f"f {f}: {len(here)} of class {cls} within {radius} of ({x}, {y}, {z})")
+
+
 def main(argv):
     if len(argv) == 3 and argv[1] == "--modes":
         modes(argv[2])
@@ -99,6 +134,9 @@ def main(argv):
         around(argv[2])
     elif len(argv) == 4 and argv[1] == "--same":
         same(argv[2], argv[3])
+    elif len(argv) >= 9 and argv[1] == "--mobys":
+        mobys(argv[2], int(argv[3]), float(argv[4]), float(argv[5]), float(argv[6]), float(argv[7]),
+              argv[8:])
     else:
         print(__doc__)
         return 2
