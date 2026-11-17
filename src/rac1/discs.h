@@ -26,10 +26,10 @@ typedef struct ta_disc {
     uint32_t card;          /* memory_card_state */
     uint32_t card_state;    /* its operation: 3 and over busy */
     uint32_t card_pending;  /* its queued operation: under 0 none */
+    uint32_t galaxy_list;   /* gGalaxyList: s32[20], the planets the ship lists, 0 ending them */
 
     /* The executable's, through relocate_data (a level program has its own copy). */
     uint32_t menu;            /* menu_system: +0 state, +8 next page, +0xC close request, ... */
-    uint32_t selected_level;  /* selected_level_index: the planet the select's cursor is on */
     uint32_t camera_suppress; /* camera_position_publication_suppressed: PauseAllSounds bails */
 
     /* Level 0's program's, through relocate_level_data(0, ...). */
@@ -38,6 +38,10 @@ typedef struct ta_disc {
     uint32_t level_exit;   /* nonzero: the level loop ends (a travel on its way) */
     uint32_t ship_request; /* ship_level_exit_requested: Triangle at the ship, its take-off next */
     uint32_t debug;        /* the debug menu's record: +8 its update flags, +0xEC its step count */
+    uint32_t menu_target;  /* the menu's transition_target_level: the planet its cursor is on, the
+                            * one update_pause_menu's restore hands ShipTravelTo */
+    uint32_t load_level;   /* the level the level loop's end flies to: ShipTravelTo's travel branch
+                            * sets it (the executable's 0x0015F6E4 in level 0's program) */
 
     /* The game function it calls. */
     const char* open_menu; /* void (int state): PauseAllSounds, the menu opened in that state */
@@ -45,7 +49,7 @@ typedef struct ta_disc {
 
 static const ta_disc k_ta_discs[] = {
     {
-        "pal",
+        "pal",       /* PAL v2.00, SCES-50916 */
         0x0013F450u, /* g_hero */
         0x0013E130u, /* resident_data_0013E130 (level_render_state) */
         0x0015EE84u, /* g_current_level_index */
@@ -54,34 +58,38 @@ static const ta_disc k_ta_discs[] = {
         0x0013D390u, /* memory_card_state */
         0xDCu,       /* its +0xDC, which the PAL pause and map want under 3 */
         0xE4u,       /* its +0xE4, which they want under 0 */
+        0x0013D618u, /* gGalaxyList */
         0x001D5F70u, /* menu_system */
-        0x001A0414u, /* selected_level_index */
         0x0018C42Cu, /* camera_position_publication_suppressed */
         0x0015F6A8u, /* D_L00_0015F6A8 cinematic_mode */
         0x0015F6ACu, /* D_L00_0015F6AC cinematic_mode_frames */
         0x0015F650u, /* D_L00_0015F650 level_loop_exit_requested */
         0x0015F710u, /* D_L00_0015F710 ship_level_exit_requested */
         0x0016C158u, /* D_L00_0016C158 gDebugFreeCamLvl */
+        0x00184514u, /* D_L00_001842F0 + 0x224 */
+        0x0015F6A4u, /* D_L00_0015F6A4 */
         "func_00219C70",
     },
     {
-        "ntsc",
-        0x0013F350u,
-        0x0013E030u,
-        0x0015ED84u,
-        0x0015EEB4u,
+        "ntsc",      /* NTSC-U v1.00, SCUS-97199 */
+        0x0013F350u, /* hero */
+        0x0013E030u, /* level_render_state */
+        0x0015ED84u, /* current_level_index */
+        0x0015EEB4u, /* mode_freeze_flags */
         0x00000001u, /* the NTSC handle_pause_input: mode_freeze_flags & 1 */
-        0x0013D290u,
-        0xD4u, /* state: the level loop's card icon shows from 3 */
-        0xDCu, /* pending_state: and from 0 */
-        0x001D5BF0u,
-        0x001A0314u,
-        0x0018C32Cu,
-        0x0015F5C4u,
-        0x0015F5C8u,
-        0x0015F570u,
-        0x0015F630u,
-        0x0016C058u,
+        0x0013D290u, /* memory_card_state */
+        0xD4u,       /* state: the level loop's card icon shows from 3 */
+        0xDCu,       /* pending_state: and from 0 */
+        0x0013D510u, /* the galaxy list (unlock_planet's D_0013D510) */
+        0x001D5BF0u, /* menu_system */
+        0x0018C32Cu, /* camera_position_publication_suppressed */
+        0x0015F5C4u, /* D_L00_0015F5C4 */
+        0x0015F5C8u, /* D_L00_0015F5C8 level_timer */
+        0x0015F570u, /* D_L00_0015F570 */
+        0x0015F630u, /* D_L00_0015F630 */
+        0x0016C058u, /* D_L00_0016C058 */
+        0x00184414u, /* D_L00_001841F0 + 0x224 (transition_target_level) */
+        0x0015F5C0u, /* D_L00_0015F5C0 */
         "FUN_00218d78",
     },
 };

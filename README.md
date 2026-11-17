@@ -13,8 +13,12 @@ infobot. What you choose does what it does at the ship:
 - **back out** (Triangle, Start or Select on the planet list, or the combo again): the menu closes
   and you are where you were, as you were: the same spot, the same move (mid-jump stays mid-jump),
   the same camera. Your ship does not land and you are not moved to it;
-- **the planet you are on** (Cross on it, then *Blast Off*): what the game does at the ship, the
-  ship lands again on its pad (Ratchet and Clank climbing out), then play goes on where you stood.
+- **the planet you are on** (Cross on it, then *Blast Off*): a trip there like any other: the game
+  saves to the memory card, the ship leaves its pad, flies, and lands, and you start the level from
+  its beginning, as when you arrive on a planet. It resets what an arrival resets: the level is
+  placed anew (its loose bolts are back, for one), except what the game records as done (broken
+  crates stay broken, and so do the kills and story steps it keeps), and everything you carry
+  (bolts, items, planets) stays.
 
 How the game's menu works and how the mod opens it, with the evidence from the decompilations:
 [DESIGN.md](DESIGN.md). The plan and where it stands: [PLAN.md](PLAN.md). How it was play-tested:
@@ -97,11 +101,11 @@ No conflict is declared with any of them.
 
 - The take-off is not played: the menu opens over the level where you stand. After *Blast Off* the
   picture cuts to the parked ship leaving its pad; Ratchet is not seen boarding.
-- Choosing the planet you are on plays the landing at the ship's pad, then play goes on where you
-  stood: the game's landing ends so. At the ship that is beside it; from afar it is a cut.
+- Choosing the planet you are on is a whole trip, about half a minute (the flight out, the flight,
+  the load, the landing), as for any planet.
 - On Veldin the list holds only the planets the story has added (none in a new game's first
-  minutes): the game never lists Veldin itself, so there the menu can only land the ship or back
-  out.
+  minutes) and never Veldin itself, which the ship cannot fly to: there *Blast Off* on Veldin lands
+  the ship again and play goes on where you stood (the game's landing, as in 0.1.0).
 - Every scripted play-test started a level directly (OpenRAC's `--level`), with planets unlocked by
   writing the game's planet list; nothing was played from a memory card save, in a party, or on a
   boss fight (PLAYTEST.md).
@@ -124,6 +128,11 @@ To try a build, add `build/package/rac1_travel_anywhere` in the launcher's **Mod
 
 ## Notes
 
+- **0.1.1**: choosing the planet you are on (*Blast Off* on it) now starts the level from its
+  beginning, through the game's own trip there (the save, the flight, the landing), as arriving
+  from another planet does. 0.1.0 landed the ship again and left you where you stood. Backing out
+  is unchanged: you stay where you were. Veldin's first visit, which the ship cannot fly to, keeps
+  the landing. Play-tested on both discs (PLAYTEST.md).
 - **0.1.0**: the first version, PAL v2.00 and NTSC-U v1.00, play-tested by script on both
   (PLAYTEST.md).
 

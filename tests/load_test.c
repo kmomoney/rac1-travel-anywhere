@@ -73,11 +73,14 @@ static void putb(uint32_t a, uint8_t v) {
 #define HERO(off) (D->hero + (off))
 #define MENU(off) (D->menu + (off))
 
-/* Ratchet standing in play on Kerwan (level 3), his ship parked, the card idle. */
+/* Ratchet standing in play on Kerwan (level 3), his ship parked, the card idle, the ship's list
+ * holding Kerwan and Novalis. */
 static void reset_game(void) {
     memset(g_mem, 0, MEMORY_SIZE);
     g_level = 3;
     puti(D->current_level, 3);
+    puti(D->galaxy_list, 3);
+    puti(D->galaxy_list + 4, 1);
     puti(D->mode, 0);
     puti(D->mode_ticks, 500);
     puti(HERO(TA_HERO_MOBY), (int32_t)HERO_MOBY);
@@ -95,9 +98,17 @@ static void* g_travel; /* the mod's replacement of ShipTravelTo */
 static int g_travel_calls, g_travel_dest;
 static int g_hooks_taken;
 
+/* ShipTravelTo as the game's: the game mode 6 either way; another planet (or none) its travel
+ * branch, which sets the level the loop's end flies to; the planet played the landing. */
 static void orig_travel(int32_t dest) {
     g_travel_calls++;
     g_travel_dest = dest;
+    puti(D->mode, 6);
+
+    // The travel branch.
+    if (dest != geti(D->current_level)) {
+        puti(D->load_level, dest);
+    }
 }
 
 static int fake_hook(
@@ -343,7 +354,7 @@ static void menu_closing(int selected) {
     puti(MENU(TA_MENU_STATE), TA_MENU_CLOSING);
     puti(MENU(TA_MENU_CLOSE), TA_CLOSE_SHIP);
     puti(MENU(TA_MENU_TIMER), 2);
-    puti(D->selected_level, selected);
+    puti(D->menu_target, selected);
 }
 
 /* The restore two ticks later, as update_pause_menu does it for a close request: 2 calls the
@@ -353,7 +364,20 @@ static void menu_restore(void) {
 
     // The ship's travel.
     if (request == TA_CLOSE_SHIP) {
-        travel(geti(D->selected_level));
+        travel(geti(D->menu_target));
+        return;
+    }
+
+    puti(D->mode, 0);
+}
+
+/* The same restore on OpenRAC's PAL build, which calls the game's ShipTravelTo past the hook. */
+static void menu_restore_unhooked(void) {
+    const int request = geti(MENU(TA_MENU_CLOSE));
+
+    // The ship's travel, the hook skipped.
+    if (request == TA_CLOSE_SHIP) {
+        orig_travel(geti(D->menu_target));
         return;
     }
 
@@ -493,14 +517,16 @@ static void test_cross_on_switch(void) {
     menu_closing(3);
     tick();
 
-    // The planet the hero is on, chosen: the game's landing.
+    // The planet the hero is on, chosen: steered to the game's travel branch.
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_SHIP);
+    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
     menu_restore();
     CHECK_EQ(g_travel_calls, 1);
-    CHECK_EQ(g_travel_dest, 3);
+    CHECK_EQ(g_travel_dest, TA_NO_PLANET);
+    CHECK_EQ(geti(D->load_level), 3);
 }
 
-static void test_landing(void) {
+static void test_restart(void) {
     reset_game();
     counters();
     press_combo();
@@ -511,11 +537,127 @@ static void test_landing(void) {
     poll(TA_PAD_CROSS);
     menu_closing(3);
     poll(0);
-    tick();
+
+    // While it closes: the close stays the ship's, its target no planet.
     CHECK_EQ(geti(MENU(TA_MENU_CLOSE)), TA_CLOSE_SHIP);
+    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+    tick();
+    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+
+    // The restore: the game's ShipTravelTo for no planet (its travel branch: the save resumes on
+    // the planet played), then the load level put back to the planet he is on, in the hook.
+    menu_restore();
+    CHECK_EQ(g_travel_calls, 1);
+    CHECK_EQ(g_travel_dest, TA_NO_PLANET);
+    CHECK_EQ(geti(D->mode), 6);
+    CHECK_EQ(geti(D->load_level), 3);
+
+    // Nothing more: the menu is over, the next poll and tick leave it so.
+    poll(0);
+    tick();
+    CHECK_EQ(geti(D->load_level), 3);
+    travel(1);
+    CHECK_EQ(g_travel_dest, 1);
+}
+
+static void test_restart_unhooked(void) {
+    reset_game();
+    counters();
+    press_combo();
+
+    // As on OpenRAC's PAL build: the game's ShipTravelTo runs past the hook.
+    menu_on(TA_MENU_CONFIRM);
+    poll(0);
+    poll(TA_PAD_CROSS);
+    menu_closing(3);
+    tick();
+    menu_restore_unhooked();
+    CHECK_EQ(g_travel_dest, TA_NO_PLANET);
+    CHECK_EQ(geti(D->load_level), TA_NO_PLANET);
+
+    // The next poll, in the ship's flight out (game mode 6), puts the planet back.
+    poll(0);
+    CHECK_EQ(geti(D->load_level), 3);
+
+    // Or the tick's end, when no poll came first.
+    reset_game();
+    counters();
+    press_combo();
+    menu_on(TA_MENU_CONFIRM);
+    poll(0);
+    poll(TA_PAD_CROSS);
+    menu_closing(3);
+    tick();
+    menu_restore_unhooked();
+    tick();
+    CHECK_EQ(geti(D->load_level), 3);
+
+    // The level the travel loads: the menu goes with the old one.
+    g_level = 4;
+    tick();
+    g_level = 3;
+    poll(0);
+}
+
+static void test_restart_missed(void) {
+    reset_game();
+    counters();
+    press_combo();
+
+    // The restore before any poll or tick's end saw the close: the planet he is on reaches the hook,
+    // which leaves it to the game (its landing) rather than force a trip.
+    menu_on(TA_MENU_CONFIRM);
+    poll(0);
+    poll(TA_PAD_CROSS);
+    menu_closing(3);
     menu_restore();
     CHECK_EQ(g_travel_calls, 1);
     CHECK_EQ(g_travel_dest, 3);
+    CHECK_EQ(geti(D->load_level), 0);
+    poll(0);
+    tick();
+
+    // A mod before this one turning the steered -1 into the planet he is on: the same, and no load
+    // level put back later (a Quit Game's -1 afterwards stays the title).
+    reset_game();
+    counters();
+    press_combo();
+    menu_on(TA_MENU_CONFIRM);
+    poll(0);
+    poll(TA_PAD_CROSS);
+    menu_closing(3);
+    tick();
+    CHECK_EQ(geti(D->menu_target), TA_NO_PLANET);
+    travel(3);
+    CHECK_EQ(g_travel_dest, 3);
+    puti(D->load_level, TA_NO_PLANET);
+    poll(0);
+    tick();
+    CHECK_EQ(geti(D->load_level), TA_NO_PLANET);
+}
+
+static void test_landing_unlisted(void) {
+    reset_game();
+    counters();
+
+    // Veldin's first visit: level 0, never in the ship's list. Blast Off on it is the game's landing.
+    g_level = 0;
+    puti(D->current_level, 0);
+    puti(D->galaxy_list, 0);
+    press_combo();
+    menu_on(TA_MENU_CONFIRM);
+    poll(0);
+    poll(TA_PAD_CROSS);
+    menu_closing(0);
+    poll(0);
+    tick();
+    CHECK_EQ(geti(D->menu_target), 0);
+    menu_restore();
+    CHECK_EQ(g_travel_calls, 1);
+    CHECK_EQ(g_travel_dest, 0);
+    CHECK_EQ(geti(D->load_level), 0);
+    poll(0);
+    tick();
 }
 
 static void test_hook_backstop(void) {
@@ -875,7 +1017,10 @@ int main(int argc, char** argv) {
         test_back_out_at_tick();
         test_travel();
         test_cross_on_switch();
-        test_landing();
+        test_restart();
+        test_restart_unhooked();
+        test_restart_missed();
+        test_landing_unlisted();
         test_hook_backstop();
         test_movie_round_trip();
         test_level_change();

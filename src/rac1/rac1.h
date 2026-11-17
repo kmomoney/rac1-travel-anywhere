@@ -29,6 +29,11 @@ enum {
     TA_MOBY_HIDDEN = 0x01
 };
 
+/* gGalaxyList's length: unlock_planet adds a planet at the first free entry of 20. */
+enum {
+    TA_GALAXY_LIST_LEN = 20
+};
+
 /* The ship's record (level_render_state, rnc/rendering/level_render_state.h). */
 enum {
     TA_SHIP_MOBY = 0x00, /* the parked ship; 0 in a level with none (load_level_gameplay) */

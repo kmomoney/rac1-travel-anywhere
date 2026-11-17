@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Ratchet & Clank's part of the mod: the ship's planet select opened from anywhere in play, and a
-// back-out from it that plays on where Ratchet was (DESIGN.md). The decisions are src/rac1/travel.h,
+// Ratchet & Clank's part of the mod: the ship's planet select opened from anywhere in play, a
+// back-out from it that plays on where Ratchet was, and the planet he is on, chosen, travelled to as
+// any other planet is, the level starting anew (DESIGN.md). The decisions are src/rac1/travel.h,
 // apart from game memory; this file reads the game into them and applies what they return.
 // Addresses: discs.h; offsets: rac1.h.
 //
 // Where each part acts:
 //   pad report  on_pad: the combo (or the key) in play asks for the menu, and its last button is
-//               the mod's until let go; while the mod's menu is up, the presses that can close it
+//               the mod's until let go; while the mod's menu is up, the presses that can close it,
+//               and the close steered (below); after a restart's travel branch, its load level
 //   tick's end  on_frame: the menu opened as the ship's take-off opens it (PauseAllSounds in the
-//               ship's state 14), or a notice saying why not; a close that backs out turned into
-//               the map's close, which plays on in place; the menu's end
-//   the close   rac1.ship.travel_to: the game's travel or landing, as the ship's; a back-out the
-//               tick's end missed, played on in place all the same
+//               ship's state 14), or a notice saying why not; the close steered: a back-out turned
+//               into the map's close, which plays on in place, the planet he is on into the game's
+//               travel branch (the restore's target -1); the menu's end
+//   the close   rac1.ship.travel_to: the game's travel or landing, as the ship's; a restart's load
+//               level put back at once; what the poll and the tick's end missed, done all the same
+//               (on PAL the port calls no hook here: DESIGN.md section 2)
 #include "rac1/game.h"
 
 #include <cstdint>
@@ -53,7 +57,9 @@ struct State {
     bool swallow = false;        // the combo's last button is the mod's until it is let go
     bool request = false;        // the trigger came: the menu opens at the tick's end
     ta_session session{};        // the mod's planet select, from its open to its close
-    bool rewrote = false;        // its back-out turned into the map's close
+    bool steered = false;        // its close looked at while closing (steer_close)
+    int steer = TA_CLOSE_GAME;   // what that close was made: the game's, the map's, a restart
+    int restart = -1;            // the level a restart travels to, until its load level is set
     int notice_ticks = 0;        // the ticks the mod's notice has left on screen
 };
 
@@ -207,12 +213,43 @@ int menu_page() {
     );
 }
 
-// A back-out from the mod's menu, while the menu closes (its state 20, two ticks before play): the
-// close request the ship's travel would follow becomes the one the map's close follows, so the game
-// itself plays on where Ratchet was (update_pause_menu's restore, DESIGN.md sections 1 and 2).
-void back_out_if_closing() {
-    // Not the mod's menu, done already, or a planet chosen.
-    if (!s.session.open || s.rewrote || s.session.confirmed) {
+// Whether the ship's list (gGalaxyList) holds the level played.
+bool current_listed() {
+    std::int32_t list[TA_GALAXY_LIST_LEN];
+
+    // Each entry.
+    for (int i = 0; i < TA_GALAXY_LIST_LEN; i++) {
+        list[i] = get<std::int32_t>(s_disc->galaxy_list + 4u * i);
+    }
+
+    return ta_listed(list, TA_GALAXY_LIST_LEN, get<int32_t>(s_disc->current_level));
+}
+
+// The restart's load level: ShipTravelTo's travel branch, run for no planet, leaves the level loop's
+// end bound for -1 (the title); the planet he is on goes there, in the tick it ran or the next
+// (the loop's end reads it after the ship's flight out, seconds later).
+void set_restart_level() {
+    const gaddr load = level0(s_disc->load_level);
+
+    // No restart waiting, or its travel branch not run yet.
+    if (s.restart < 0 || game_mode() != 6 || get<int32_t>(load) != TA_NO_PLANET) {
+        return;
+    }
+
+    put<int32_t>(load, s.restart);
+    trace("restart: the load level set to planet " + std::to_string(s.restart));
+    s.restart = -1;
+}
+
+// The mod's menu while it closes (its state 20, two ticks before play): what its restore does next,
+// steered by what it reads (update_pause_menu's restore, DESIGN.md sections 1 and 2). A back-out:
+// the close request the ship's travel would follow becomes the one the map's close follows, so the
+// game itself plays on where Ratchet was. The planet he is on, chosen: the restore's target becomes
+// no planet, so the game's ShipTravelTo takes its travel branch (the save, the flight) rather than
+// the landing; the load level it then sets goes back to this planet (set_restart_level).
+void steer_close() {
+    // Not the mod's menu, or done already.
+    if (!s.session.open || s.steered) {
         return;
     }
 
@@ -225,18 +262,38 @@ void back_out_if_closing() {
         return;
     }
 
-    const int dest = get<int32_t>(exe(s_disc->selected_level));
+    const gaddr target = level0(s_disc->menu_target);
+    const int dest = get<int32_t>(target);
     const int current = get<int32_t>(s_disc->current_level);
+    const int close = ta_close(&s.session, dest, current, current_listed());
+    s.steered = true;
+    s.steer = close;
 
-    // A planet the game is set to fly to: its travel goes on.
-    if (ta_close(&s.session, dest, current) != TA_CLOSE_BACK) {
-        trace("menu closing for planet " + std::to_string(dest) + ": the ship's travel");
+    // Backed out: the map's close.
+    if (close == TA_CLOSE_BACK) {
+        put<int32_t>(menu + TA_MENU_CLOSE, TA_CLOSE_TO_PLAY);
+        trace(
+            "backed out on planet " + std::to_string(current) + ": the map's close, play goes on"
+        );
         return;
     }
 
-    put<int32_t>(menu + TA_MENU_CLOSE, TA_CLOSE_TO_PLAY);
-    s.rewrote = true;
-    trace("backed out on planet " + std::to_string(current) + ": the map's close, play goes on");
+    // The planet he is on: the game's travel to it.
+    if (close == TA_CLOSE_RESTART) {
+        put<int32_t>(target, TA_NO_PLANET);
+        s.restart = current;
+        trace(
+            "planet " + std::to_string(current)
+            + " chosen, the one he is on: the game's travel to it"
+        );
+        return;
+    }
+
+    trace(
+        "menu closing for planet " + std::to_string(dest)
+        + (dest == current ? ": the ship's landing (not in the ship's list)"
+                           : ": the ship's travel")
+    );
 }
 
 // on_pad: pad 0's report, before the game reads it.
@@ -253,8 +310,10 @@ void pad(int port, std::uint8_t* report, int size) {
     // The mod's menu: the presses that can close it (the menu reads this report this tick).
     if (s.session.open && game_mode() == 3) {
         ta_session_press(&s.session, menu_page(), pressed);
-        back_out_if_closing();
+        steer_close();
     }
+
+    set_restart_level();
 
     // The combo's last button stays the mod's until it is let go: the game never sees it.
     if (s.swallow) {
@@ -315,7 +374,8 @@ void end_session_if_over() {
     if (level != s.session.level) {
         trace("menu over: the level changed");
         s.session = ta_session{};
-        s.rewrote = false;
+        s.steered = false;
+        s.restart = -1;
         return;
     }
 
@@ -324,9 +384,13 @@ void end_session_if_over() {
 
     // Play again, and no movie bringing the menu back.
     if (back) {
-        trace(s.rewrote ? "menu over: play goes on in place" : "menu over: play again");
+        trace(
+            s.steered && s.steer == TA_CLOSE_BACK ? "menu over: play goes on in place"
+                                                  : "menu over: play again"
+        );
         s.session = ta_session{};
-        s.rewrote = false;
+        s.steered = false;
+        s.restart = -1;
     }
 }
 
@@ -344,7 +408,8 @@ void open(const ta_play& p) {
 
     put<int32_t>(level0(s_disc->mode_ticks), 0);
     s.session = ta_session{1, p.level, 0};
-    s.rewrote = false;
+    s.steered = false;
+    s.restart = -1;
 
     // A refusal's notice from before goes.
     if (s.notice_ticks > 0) {
@@ -361,8 +426,9 @@ void tick() {
         notice("");
     }
 
+    set_restart_level();
     end_session_if_over();
-    back_out_if_closing();
+    steer_close();
 
     // No trigger.
     if (!s.request) {
@@ -397,9 +463,18 @@ void travel_to(Original original, int32_t dest) {
     }
 
     const int current = get<int32_t>(s_disc->current_level);
-    const int close = ta_close(&s.session, dest, current);
+    // A restart: the target steered to no planet. The planet he is on handed here instead (the steer
+    // missed, or a mod before this one changed the target) is the game's landing.
+    const bool restart = dest == TA_NO_PLANET && s.restart >= 0;
+    const int close =
+        restart ? TA_CLOSE_RESTART : ta_close(&s.session, dest, current, current_listed());
     s.session = ta_session{};
-    s.rewrote = false;
+    s.steered = false;
+
+    // Not the steered target: no load level to put back.
+    if (!restart) {
+        s.restart = -1;
+    }
 
     // A back-out the tick's end did not turn into the map's close: what that close does, by hand
     // (update_pause_menu's last branch, play; close request 1, after which it unpauses the music).
@@ -407,6 +482,17 @@ void travel_to(Original original, int32_t dest) {
         put<int32_t>(level0(s_disc->mode), 0);
         put<int32_t>(exe(s_disc->menu) + TA_MENU_CLOSE, TA_CLOSE_TO_PLAY);
         trace("ShipTravelTo(" + std::to_string(dest) + ") backed out: play goes on in place");
+        return;
+    }
+
+    // The steered restart: the game's travel branch, for no planet, then its load level put back.
+    if (restart) {
+        trace(
+            "ShipTravelTo(" + std::to_string(dest) + ") on planet " + std::to_string(current)
+            + ": the ship's travel to it, the level anew"
+        );
+        original(TA_NO_PLANET);
+        set_restart_level();
         return;
     }
 

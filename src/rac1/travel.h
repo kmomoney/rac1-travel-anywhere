@@ -8,7 +8,8 @@
  * 2. Whether the planet select may open now: the game's own rules for its map, and the mod's for
  *    the ship (DESIGN.md, section 4). The first rule that refuses names the reason.
  * 3. The menu once open: which press closed it, so a close that backs out plays on where Ratchet
- *    was instead of landing the ship (DESIGN.md, section 2).
+ *    was instead of landing the ship, and one that chooses the planet he is on travels to it,
+ *    starting the level anew (DESIGN.md, section 2).
  */
 #ifndef RAC1_TRAVEL_ANYWHERE_TRAVEL_H
 #define RAC1_TRAVEL_ANYWHERE_TRAVEL_H
@@ -361,16 +362,48 @@ static inline void ta_session_press(ta_session* s, int page, uint32_t pressed) {
     }
 }
 
+/* Whether the ship's list holds a planet: `list` is gGalaxyList's `count` entries, a 0 ending them.
+ * Level 0 (Veldin's first visit) is never in it: 0 is the end. */
+static inline int ta_listed(const int32_t* list, int count, int level) {
+    // Each entry up to the end.
+    for (int i = 0; i < count && list[i] != 0; i++) {
+        // This one.
+        if (list[i] == level) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 /* What the planet select's close does. */
 enum {
-    TA_CLOSE_GAME = 0, /* the game's own: the travel, or the ship's landing again */
-    TA_CLOSE_BACK = 1  /* backed out: play on where Ratchet was, as the map's close does */
+    TA_CLOSE_GAME = 0,   /* the game's own: the travel to another planet, or the ship's landing */
+    TA_CLOSE_BACK = 1,   /* backed out: play on where Ratchet was, as the map's close does */
+    TA_CLOSE_RESTART = 2 /* the planet he is on, chosen: the game's travel to it, the level anew */
 };
 
-/* The close of the mod's menu: `dest` the planet it closed with, `current` the one the hero is on.
- * Backing out leaves the ship's planet selected; one chosen travels, the ship's own lands. */
-static inline int ta_close(const ta_session* s, int dest, int current) {
-    return s->open && !s->confirmed && dest == current ? TA_CLOSE_BACK : TA_CLOSE_GAME;
+/* The close of the mod's menu: `dest` the planet it closed with, `current` the one the hero is on,
+ * `listed` whether the ship's list holds it. Backing out leaves the ship's planet selected. A planet
+ * chosen is the game's travel; the one he is on too (the level loads anew, as on arrival) when the
+ * ship could fly to it, else (Veldin, never listed) the game's own landing again. */
+static inline int ta_close(const ta_session* s, int dest, int current, int listed) {
+    // Not the mod's menu, or another planet: the game's.
+    if (!s->open || dest != current) {
+        return TA_CLOSE_GAME;
+    }
+
+    // The planet he is on.
+    if (!s->confirmed) {
+        return TA_CLOSE_BACK;
+    }
+
+    return listed ? TA_CLOSE_RESTART : TA_CLOSE_GAME;
 }
+
+/* The restore's target while a restart's travel branch runs: no planet, so ShipTravelTo takes its
+ * travel branch, and its save (memcard_Save with a level under 0) resumes on the level played. Also
+ * the load level's value for the title (Quit Game), so the mod sets the planet back at once. */
+#define TA_NO_PLANET (-1)
 
 #endif /* RAC1_TRAVEL_ANYWHERE_TRAVEL_H */

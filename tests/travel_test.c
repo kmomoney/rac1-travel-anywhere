@@ -366,24 +366,54 @@ static void test_session(void) {
     }
 }
 
+static void test_listed(void) {
+    // A new game on Kerwan: Kerwan alone; later Novalis and Aridia found.
+    const int32_t kerwan[TA_GALAXY_LIST_LEN] = {3};
+    const int32_t three[TA_GALAXY_LIST_LEN] = {3, 1, 2};
+    const int32_t full[4] = {1, 2, 3, 4};
+    const int32_t none[TA_GALAXY_LIST_LEN] = {0};
+
+    CHECK_EQ(ta_listed(kerwan, TA_GALAXY_LIST_LEN, 3), 1);
+    CHECK_EQ(ta_listed(kerwan, TA_GALAXY_LIST_LEN, 1), 0);
+    CHECK_EQ(ta_listed(three, TA_GALAXY_LIST_LEN, 2), 1);
+    CHECK_EQ(ta_listed(three, TA_GALAXY_LIST_LEN, 4), 0);
+
+    // The list's end: a 0, or its length.
+    CHECK_EQ(ta_listed(full, 4, 4), 1);
+    CHECK_EQ(ta_listed(full, 3, 4), 0);
+
+    // Veldin's first visit (level 0) is never listed: 0 ends the list.
+    CHECK_EQ(ta_listed(none, TA_GALAXY_LIST_LEN, 0), 0);
+    CHECK_EQ(ta_listed(three, TA_GALAXY_LIST_LEN, 0), 0);
+}
+
 static void test_close(void) {
     ta_session s = {1, 3, 0};
 
-    // Backed out: the planet the ship is on, nothing chosen.
-    CHECK_EQ(ta_close(&s, 3, 3), TA_CLOSE_BACK);
+    // Backed out: the planet the ship is on, nothing chosen; listed or not.
+    CHECK_EQ(ta_close(&s, 3, 3, 1), TA_CLOSE_BACK);
+    CHECK_EQ(ta_close(&s, 3, 3, 0), TA_CLOSE_BACK);
 
-    // The planet the hero is on, chosen: the game's landing.
+    // The planet the hero is on, chosen: the game's travel to it, the level anew.
     s.confirmed = 1;
-    CHECK_EQ(ta_close(&s, 3, 3), TA_CLOSE_GAME);
+    CHECK_EQ(ta_close(&s, 3, 3, 1), TA_CLOSE_RESTART);
+
+    // One the ship cannot fly to (Veldin's first visit): the game's landing, as at the ship.
+    CHECK_EQ(ta_close(&s, 0, 0, 0), TA_CLOSE_GAME);
 
     // Another planet: the travel, chosen or not (the game's own selection is trusted).
-    CHECK_EQ(ta_close(&s, 1, 3), TA_CLOSE_GAME);
+    CHECK_EQ(ta_close(&s, 1, 3, 1), TA_CLOSE_GAME);
     s.confirmed = 0;
-    CHECK_EQ(ta_close(&s, 1, 3), TA_CLOSE_GAME);
+    CHECK_EQ(ta_close(&s, 1, 3, 1), TA_CLOSE_GAME);
 
     // Not the mod's menu: always the game's.
     s.open = 0;
-    CHECK_EQ(ta_close(&s, 3, 3), TA_CLOSE_GAME);
+    CHECK_EQ(ta_close(&s, 3, 3, 1), TA_CLOSE_GAME);
+    s.confirmed = 1;
+    CHECK_EQ(ta_close(&s, 3, 3, 1), TA_CLOSE_GAME);
+
+    // No planet is never one of the game's.
+    CHECK_EQ(TA_NO_PLANET < 0, 1);
 }
 
 int main(void) {
@@ -393,6 +423,7 @@ int main(void) {
     test_may_open();
     test_menu_page();
     test_session();
+    test_listed();
     test_close();
     CHECK_DONE("travel_test");
 }
